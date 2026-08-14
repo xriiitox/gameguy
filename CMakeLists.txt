@@ -32,6 +32,8 @@ target_include_directories(imgui PUBLIC
 
 target_sources(${PROJECT_NAME} PRIVATE
   gb.cpp
+  mem.cpp
+  op.cpp
 )
 
 target_link_libraries(${PROJECT_NAME} PUBLIC SDL3::SDL3 imgui)
