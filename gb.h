@@ -98,6 +98,8 @@ class GameBoy {
         uint16_t sp = 0xFFFE; // stack pointer
         uint16_t pc = 0x100; // program counter
 
+        bool ime = false;
+
         int t_cycle = 0;
 
         void opcode(uint8_t inst);
@@ -106,6 +108,14 @@ class GameBoy {
         void jr_cc_e8(std::function<bool()> cc);
         void add_hl_rpp(int p);
         void ld_rpp_nn(int p);
+        void inc16(int p);
+        void dec16(int p);
+        void inc8(int y);
+        void dec8(int y);
+        void ret_cc(std::function<bool()> cc);
+        void add_sp_e();
+        void ld_hl_sp_e();
+        void jp_cc_n16(std::function<bool()> cc);
 
         // 8 bit register table
         std::map<int, std::function<uint8_t*()>> r = {
@@ -133,6 +143,45 @@ class GameBoy {
             { 1, [this]{ return &this->reg.de; }},
             { 2, [this]{ return &this->reg.hl; }},
             { 3, [this]{ return &this->reg.af; }}
+        };
+
+        // misc accumulator/flag ops
+        void rlca();
+        void rrca();
+        void rla();
+        void rra();
+        void daa();
+        void cpl();
+        void scf();
+        void ccf();
+        std::map<int, std::function<void()>> flag_ops = {
+            { 0, [this]{ this->rlca(); } },
+            { 1, [this]{ this->rrca(); } },
+            { 2, [this]{ this->rla(); } },
+            { 3, [this]{ this->rra(); } },
+            { 4, [this]{ this->daa(); } },
+            { 5, [this]{ this->cpl(); } },
+            { 6, [this]{ this->scf(); } },
+            { 7, [this]{ this->ccf(); } }
+        };
+
+        void add_a(int z);
+        void adc_a(int z);
+        void sub_a(int z);
+        void sbc_a(int z);
+        void and_a(int z);
+        void xor_a(int z);
+        void or_a(int z);
+        void cp_a(int z);
+        std::map<int, std::function<void(int)>> alu_r = {
+            { 0, [this](int z){ this->add_a(z); } },
+            { 1, [this](int z){ this->adc_a(z); } },
+            { 2, [this](int z){ this->sub_a(z); } },
+            { 3, [this](int z){ this->sbc_a(z); } },
+            { 4, [this](int z){ this->and_a(z); } },
+            { 5, [this](int z){ this->xor_a(z); } },
+            { 6, [this](int z){ this->or_a(z); } },
+            { 7, [this](int z){ this->cp_a(z); } }
         };
 
     public:
