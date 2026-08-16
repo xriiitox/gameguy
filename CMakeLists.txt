@@ -12,6 +12,9 @@ file(GLOB IMGUI_SOURCES ${IMGUI_PATH}/*.cpp
   ${IMGUI_PATH}/misc/cpp/*
 )
 
+file(GLOB ROMS *.gb)
+file(COPY ${ROMS} DESTINATION .)
+
 add_library(imgui STATIC ${IMGUI_SOURCES})
 
 find_package(SDL3 REQUIRED)
@@ -33,8 +36,11 @@ target_include_directories(imgui PUBLIC
 target_sources(${PROJECT_NAME} PRIVATE
   gb.cpp
   mem.cpp
-  op.cpp
+  cpu.cpp
+  config.cpp
 )
 
-target_link_libraries(${PROJECT_NAME} PUBLIC SDL3::SDL3 imgui)
+add_subdirectory(${CMAKE_SOURCE_DIR}/nativefiledialog-extended)
+
+target_link_libraries(${PROJECT_NAME} PRIVATE SDL3::SDL3 imgui nfd)
 target_link_libraries(imgui PUBLIC SDL3::SDL3)

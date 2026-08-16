@@ -17,6 +17,5 @@ void Load_Rom(string filename, uint8_t mem[]) {
     int fakepc = 0x0;
     for (auto byte : buffer) {
         mem[fakepc++] = static_cast<uint8_t>(byte);
-
     }
 }

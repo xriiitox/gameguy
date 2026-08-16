@@ -18,6 +18,12 @@ class GameBoy {
 
         std::unique_ptr<CPU> cpu;
 
+
+        double cycle_dt = 1.0 / 4194304;
+        double now_seconds();
+        double t = now_seconds();
+        double next_inst = t;
+
     public:
         GameBoy(GBConfig gbconf);
         void cycle();

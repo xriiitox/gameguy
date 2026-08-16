@@ -87,12 +87,10 @@ private:
     // registers
     Registers reg;
     uint16_t sp = 0xFFFE; // stack pointer
-    uint16_t pc = 0x100; // program counter
 
     bool ime = false;
     bool ime_next = false;
-
-    void opcode(uint8_t inst);
+    bool halted = false;
 
     uint8_t* bus;
 
@@ -208,5 +206,7 @@ private:
     };
 public:
     CPU(uint8_t bus[]);
+    void opcode(uint8_t inst);
     int t_cycle = 0;
+    uint16_t pc = 0x100; // program counter
 };

@@ -13,6 +13,7 @@ void CPU::opcode(uint8_t inst) {
     int z = inst & 0x07;
     int p = y >> 1;
     int q = y % 2;
+    t_cycle = 0;
 
     if (ime_next) {
         ime = 1;
@@ -120,7 +121,7 @@ void CPU::opcode(uint8_t inst) {
             break;
         case 1: // 8bit loading (LD r8, r8)
             if (z == 6 && y == 6) { // HALT: halt system clock
-                // TODO?
+                halted = true;
                 break;
             }
             *r[y]() = *r[z]();
@@ -260,6 +261,7 @@ void CPU::opcode(uint8_t inst) {
                             call_cc_nn(reg.CC[y]);
                             break;
                     }
+                    break;
                 case 5: // PUSH and various ops
                     if (q) { // CALL nn
                         call_nn();
