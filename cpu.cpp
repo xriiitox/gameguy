@@ -1,14 +1,23 @@
-#include "gb.h"
+#include "cpu.h"
 #include <cstdint>
 #include <iostream>
 
+CPU::CPU(uint8_t bus[]) {
+    this->bus = bus;
+}
+
 // octal decoding
-void GameBoy::opcode(uint8_t inst) {
+void CPU::opcode(uint8_t inst) {
     int x = inst >> 6;
     int y = (inst & 0x38) >> 3;
     int z = inst & 0x07;
     int p = y >> 1;
     int q = y % 2;
+
+    if (ime_next) {
+        ime = 1;
+        ime_next = 0;
+    }
 
     switch (x) {
         case 0:
@@ -118,7 +127,7 @@ void GameBoy::opcode(uint8_t inst) {
             t_cycle += (z == 6) ^ (y == 6) ? 8 : 4;
             break;
         case 2: // arithmetic/logic ops with register/mem loc
-            alu_r[y](z);
+            alu[y](z, true);
             break;
         case 3:
             switch (z) {
@@ -181,6 +190,7 @@ void GameBoy::opcode(uint8_t inst) {
                         uint8_t lsb = bus[sp++];
                         uint8_t msb = bus[sp++];
                         *rp2[p]() = ((uint16_t)msb << 8) + lsb;
+                        if (p == 3) *rp2[p]() &= 0xFFF0;
                         t_cycle += 12;
                     }
                     break;
@@ -220,9 +230,51 @@ void GameBoy::opcode(uint8_t inst) {
                     break;
                 case 3: // assorted ops
                     switch (y) {
-                        case 0: // JP n16
+                        case 0: { // JP n16
+                            uint8_t lsb = bus[pc++];
+                            uint8_t msb = bus[pc++];
+                            uint16_t n16 = ((uint16_t)msb << 8) + lsb;
+                            pc = n16;
+                            t_cycle += 16;
+                            break;
+                        }
+                        case 1: // CB Prefix
+                            cb(bus[pc++]);
+                            break;
+                        case 6: // DI
+                            ime = 0;
+                            t_cycle += 4;
+                            break;
+                        case 7: // EI
+                            ime_next = 1;
+                            t_cycle += 4;
                             break;
                     }
+                    break;
+                case 4: // conditional call
+                    switch (y) {
+                        case 0:
+                        case 1:
+                        case 2:
+                        case 3:
+                            call_cc_nn(reg.CC[y]);
+                            break;
+                    }
+                case 5: // PUSH and various ops
+                    if (q) { // CALL nn
+                        call_nn();
+                    } else { // PUSH rp2[p]
+                        sp--;
+                        bus[sp--] = (uint8_t)(*rp2[p]() >> 8);
+                        bus[sp] = (uint8_t)*rp2[p]();
+                        t_cycle += 16;
+                    }
+                    break;
+                case 6: // alu[y] n8: accumulator and immediate n8
+                    alu[y](0, false);
+                    break;
+                case 7: // RST y*8
+                    rst_y(y);
                     break;
             }
             break;
@@ -230,7 +282,7 @@ void GameBoy::opcode(uint8_t inst) {
     }
 }
 
-void GameBoy::jr_cc_e8(std::function<bool()> cc) { // JR cc, e8: jump to pc+e8 if cc
+void CPU::jr_cc_e8(std::function<bool()> cc) { // JR cc, e8: jump to pc+e8 if cc
     int8_t e8 = bus[pc++];
     if (cc()) {
         pc += e8;
@@ -238,7 +290,7 @@ void GameBoy::jr_cc_e8(std::function<bool()> cc) { // JR cc, e8: jump to pc+e8 i
     } else t_cycle += 8;
 }
 
-void GameBoy::add_hl_rpp(int p) { // ADD HL, rp[p]: add value of rp[p] to HL and store in HL
+void CPU::add_hl_rpp(int p) { // ADD HL, rp[p]: add value of rp[p] to HL and store in HL
     uint16_t hl = reg.hl;
     uint16_t rpp = *rp[p]();
     uint32_t sum = hl + rpp;
@@ -249,35 +301,43 @@ void GameBoy::add_hl_rpp(int p) { // ADD HL, rp[p]: add value of rp[p] to HL and
     t_cycle += 8;
 }
 
-void GameBoy::ld_rpp_nn(int p) { // LD rp[p], nn: load nn into rp[p]
+void CPU::ld_rpp_nn(int p) { // LD rp[p], nn: load nn into rp[p]
     int lsb = bus[pc++];
     int msb = bus[pc++];
     *rp[p]() = (msb << 8) + lsb;
     t_cycle += 12;
 }
 
-void GameBoy::dec16(int p) {
+void CPU::dec16(int p) {
     (*rp[p]())--;
     t_cycle += 8;
 }
 
-void GameBoy::inc16(int p) {
+void CPU::inc16(int p) {
     (*rp[p]())++;
     t_cycle += 8;
 }
 
-void GameBoy::inc8(int y) {
+void CPU::inc8(int y) {
+    uint8_t old = *r[y]();
     (*r[y]())++;
+    reg.setFlag('z', *r[y]() == 0);
+    reg.setFlag('n', 0);
+    reg.setFlag('h', (old & 0x0F) == 0x0F);
     t_cycle += (y == 6) ? 12 : 4;
 }
 
-void GameBoy::dec8(int y) {
-    (*r[y]())++;
+void CPU::dec8(int y) {
+    uint8_t old = *r[y]();
+    (*r[y]())--;
+    reg.setFlag('z', *r[y]() == 0);
+    reg.setFlag('n', 1);
+    reg.setFlag('h', (old & 0x0F) == 0x00);
     t_cycle += (y == 6) ? 12 : 4;
 }
 
 // Assorted accumulator/flag operations block
-void GameBoy::rlca() { // RLCA: rotate A register left circular
+void CPU::rlca() { // RLCA: rotate A register left circular
     int b7 = (*reg.a & 0x80) >> 7;
     reg.setFlag('c', b7); // set C to bit 7
     *reg.a = *reg.a << 1; // rotate left 1 bit
@@ -287,7 +347,7 @@ void GameBoy::rlca() { // RLCA: rotate A register left circular
     reg.setFlag('h', 0);
     t_cycle += 4;
 }
-void GameBoy::rrca() { // RRCA: rotate A circular right
+void CPU::rrca() { // RRCA: rotate A circular right
     int b0 = *reg.a & 0x01;
     reg.setFlag('c', b0); // set C to bit 0
     *reg.a = *reg.a >> 1; // rotate right 1 bit
@@ -297,7 +357,7 @@ void GameBoy::rrca() { // RRCA: rotate A circular right
     reg.setFlag('h', 0);
     t_cycle += 4;
 }
-void GameBoy::rla() { // RLA: rotate A register left (through carry)
+void CPU::rla() { // RLA: rotate A register left (through carry)
     int b7 = (*reg.a & 0x80) >> 7;
     int oldC = (*reg.f & (1 << 4)) >> 4;
     *reg.a = (*reg.a << 1) + oldC;
@@ -307,7 +367,7 @@ void GameBoy::rla() { // RLA: rotate A register left (through carry)
     reg.setFlag('h', 0);
     t_cycle += 4;
 }
-void GameBoy::rra() { // RRA: rotate A right (through carry)
+void CPU::rra() { // RRA: rotate A right (through carry)
     int b0 = *reg.a & 0x01;
     int c = (*reg.f & 0x10) >> 4;
     *reg.a = *reg.a >> 1; // rotate right 1 bit
@@ -318,7 +378,7 @@ void GameBoy::rra() { // RRA: rotate A right (through carry)
     reg.setFlag('h', 0);
     t_cycle += 4;
 }
-void GameBoy::daa() { // DAA: Decimal Adjust Accumulator
+void CPU::daa() { // DAA: Decimal Adjust Accumulator
     if (reg.getFlag('n')) {
         int adj = 0;
         adj += reg.getFlag('h') ? 0x6 : 0;
@@ -328,28 +388,28 @@ void GameBoy::daa() { // DAA: Decimal Adjust Accumulator
         int adj = 0;
         adj += (reg.getFlag('h') || (*reg.a & 0xF) > 0x9) ? 0x6 : 0;
         if (reg.getFlag('c') || *reg.a > 0x99) {
-            adj += 60;
+            adj += 0x60;
             reg.setFlag('c', 1);
         }
         *reg.a += adj;
     }
     reg.setFlag('h', 0);
-    if (*reg.a == 0) reg.setFlag('z', 1);
+    reg.setFlag('z', *reg.a == 0);
     t_cycle += 4;
 }
-void GameBoy::cpl() { // CPL: bitwise NOT (ComPLement accumulator)
+void CPU::cpl() { // CPL: bitwise NOT (ComPLement accumulator)
     *reg.a = ~(*reg.a);
     reg.setFlag('n', 1);
     reg.setFlag('h', 1);
     t_cycle += 4;
 }
-void GameBoy::scf() { // SCF: set carry flag
+void CPU::scf() { // SCF: set carry flag
     reg.setFlag('n', 0);
     reg.setFlag('h', 0);
     reg.setFlag('c', 1);
     t_cycle += 4;
 }
-void GameBoy::ccf() { // CCF: Complement (flip) carry flag
+void CPU::ccf() { // CCF: Complement (flip) carry flag
     reg.setFlag('n', 0);
     reg.setFlag('h', 0);
     reg.setFlag('c', !reg.getFlag('c'));
@@ -357,9 +417,9 @@ void GameBoy::ccf() { // CCF: Complement (flip) carry flag
 }
 
 // alu ops
-void GameBoy::add_a(int z) { // ADD A, r8: add value from r8 to A and store in A
+void CPU::add_a(int z, bool use_r) { // ADD A, r8/n8: add value from (r8/n8) to A and store in A
     uint8_t a = *reg.a;
-    uint8_t r8 = *r[z]();
+    uint8_t r8 = use_r ? *r[z]() : bus[pc++];
     uint16_t sum = a + r8;
 
     *reg.a = (uint8_t)sum;
@@ -368,11 +428,11 @@ void GameBoy::add_a(int z) { // ADD A, r8: add value from r8 to A and store in A
     reg.setFlag('n', 0);
     reg.setFlag('h', ((a & 0x0F) + (r8 & 0x0F)) > 0x0F);
     reg.setFlag('c', sum > 0xFF);
-    t_cycle += (z == 6) ? 8 : 4;
+    t_cycle += ((use_r && z == 6) || !use_r) ? 8 : 4;
 }
-void GameBoy::adc_a(int z) { // ADC A, r8: add value from carry and r8 to A and store in A
+void CPU::adc_a(int z, bool use_r) { // ADC A, r8/n8: add value from carry and (r8/n8) to A and store in A
     uint16_t a = *reg.a;
-    uint16_t r8 = *r[z]();
+    uint16_t r8 = use_r ? *r[z]() : bus[pc++];
     uint16_t c = (reg.getFlag('c') ? 1 : 0);
     uint16_t sum = a + r8 + c;
 
@@ -382,11 +442,11 @@ void GameBoy::adc_a(int z) { // ADC A, r8: add value from carry and r8 to A and 
     reg.setFlag('n', 0);
     reg.setFlag('h', ((a & 0x0F) + (r8 & 0x0F) + c) > 0x0F);
     reg.setFlag('c', sum > 0xFF);
-    t_cycle += (z == 6) ? 8 : 4;
+    t_cycle += ((use_r && z == 6) || !use_r) ? 8 : 4;
 }
-void GameBoy::sub_a(int z) { // SUB A, r8: subtract r8 from A and store in A
+void CPU::sub_a(int z, bool use_r) { // SUB A, r8/n8: subtract (r8/n8) from A and store in A
     uint16_t a = *reg.a;
-    uint16_t r8 = *r[z]();
+    uint16_t r8 = use_r ? *r[z]() : bus[pc++];
     uint16_t diff = a - r8;
 
     *reg.a = (uint8_t)diff;
@@ -395,11 +455,11 @@ void GameBoy::sub_a(int z) { // SUB A, r8: subtract r8 from A and store in A
     reg.setFlag('n', 1);
     reg.setFlag('h', (a & 0x0F) < (r8 & 0x0F));
     reg.setFlag('c', a < r8);
-    t_cycle += (z == 6) ? 8 : 4;
+    t_cycle += ((use_r && z == 6) || !use_r) ? 8 : 4;
 }
-void GameBoy::sbc_a(int z) { // SBC A, r8: subtract r8 and carry from A and store in A
+void CPU::sbc_a(int z, bool use_r) { // SBC A, r8/n8: subtract (r8/n8) and carry from A and store in A
     uint16_t a = *reg.a;
-    uint16_t r8 = *r[z]();
+    uint16_t r8 = use_r ? *r[z]() : bus[pc++];
     uint16_t c = reg.getFlag('c') ? 1 : 0;
     uint16_t diff = a - r8 - c;
 
@@ -409,45 +469,45 @@ void GameBoy::sbc_a(int z) { // SBC A, r8: subtract r8 and carry from A and stor
     reg.setFlag('n', 1);
     reg.setFlag('h', (a & 0x0F) < ((r8 & 0x0F) + c));
     reg.setFlag('c', a < (uint16_t)r8 + c);
-    t_cycle += (z == 6) ? 8 : 4;
+    t_cycle += ((use_r && z == 6) || !use_r) ? 8 : 4;
 }
-void GameBoy::and_a(int z) { // AND A, r8: bitwise and between A and r8 and store in A
-    *reg.a = *reg.a & *r[z]();
+void CPU::and_a(int z, bool use_r) { // AND A, r8/n8: bitwise and between A and (r8/n8) and store in A
+    *reg.a = *reg.a & (use_r ? *r[z]() : bus[pc++]);
     reg.setFlag('z', *reg.a == 0);
     reg.setFlag('n', 0);
     reg.setFlag('h', 1);
     reg.setFlag('c', 0);
-    t_cycle += (z == 6) ? 8 : 4;
+    t_cycle += ((use_r && z == 6) || !use_r) ? 8 : 4;
 }
-void GameBoy::xor_a(int z) { // XOR A, r8: bitwise xor between A and r8 and store in A
-    *reg.a = *reg.a ^ *r[z]();
+void CPU::xor_a(int z, bool use_r) { // XOR A, r8/n8: bitwise xor between A and (r8/n8) and store in A
+    *reg.a = *reg.a ^ (use_r ? *r[z]() : bus[pc++]);
     reg.setFlag('z', *reg.a == 0);
     reg.setFlag('n', 0);
     reg.setFlag('h', 0);
     reg.setFlag('c', 0);
-    t_cycle += (z == 6) ? 8 : 4;
+    t_cycle += ((use_r && z == 6) || !use_r) ? 8 : 4;
 }
-void GameBoy::or_a(int z) { // OR A, r8: bitwise or between A and r8 and store in A
-    *reg.a = *reg.a | *r[z]();
+void CPU::or_a(int z, bool use_r) { // OR A, r8/n8: bitwise or between A and (r8/n8) and store in A
+    *reg.a = *reg.a | (use_r ? *r[z]() : bus[pc++]);
     reg.setFlag('z', *reg.a == 0);
     reg.setFlag('n', 0);
     reg.setFlag('h', 0);
     reg.setFlag('c', 0);
-    t_cycle += (z == 6) ? 8 : 4;
+    t_cycle += ((use_r && z == 6) || !use_r) ? 8 : 4;
 }
-void GameBoy::cp_a(int z) { // CP A, r8: subtract r8 from A and update flags
+void CPU::cp_a(int z, bool use_r) { // CP A, r8/n8: subtract (r8/n8) from A and update flags
     uint16_t a = *reg.a;
-    uint16_t r8 = *r[z]();
+    uint16_t r8 = use_r ? *r[z]() : bus[pc++];
     uint16_t diff = a - r8;
 
     reg.setFlag('z', diff == 0);
     reg.setFlag('n', 1);
     reg.setFlag('h', (a & 0x0F) < (r8 & 0x0F));
     reg.setFlag('c', a < r8);
-    t_cycle += (z == 6) ? 8 : 4;
+    t_cycle += ((use_r && z == 6) || !use_r) ? 8 : 4;
 }
 
-void GameBoy::ret_cc(std::function<bool()> cc) { // RET cc: conditional return
+void CPU::ret_cc(std::function<bool()> cc) { // RET cc: conditional return
     if (cc()) {
         uint8_t lsb = bus[sp++];
         uint8_t msb = bus[sp++];
@@ -456,7 +516,7 @@ void GameBoy::ret_cc(std::function<bool()> cc) { // RET cc: conditional return
     } else t_cycle += 8;
 }
 
-void GameBoy::add_sp_e() { // ADD SP, e8: add signed 8bit offset to stack pointer
+void CPU::add_sp_e() { // ADD SP, e8: add signed 8bit offset to stack pointer
     int8_t e8 = (int8_t)bus[pc++];
     uint16_t _sp = sp;
     uint16_t sum = _sp + e8;
@@ -470,7 +530,7 @@ void GameBoy::add_sp_e() { // ADD SP, e8: add signed 8bit offset to stack pointe
     t_cycle += 16;
 }
 
-void GameBoy::ld_hl_sp_e() { // LD HL, SP+e8: load to HL the value of e8 + sp
+void CPU::ld_hl_sp_e() { // LD HL, SP+e8: load to HL the value of e8 + sp
     int8_t e8 = (int8_t)bus[pc++];
     uint16_t sum = sp + e8;
 
@@ -483,7 +543,7 @@ void GameBoy::ld_hl_sp_e() { // LD HL, SP+e8: load to HL the value of e8 + sp
     t_cycle += 12;
 }
 
-void GameBoy::jp_cc_n16(std::function<bool()> cc) { // JP cc, nn: conditional jump to nn
+void CPU::jp_cc_n16(std::function<bool()> cc) { // JP cc, n16: conditional jump to n16
     uint8_t lsb = bus[pc++];
     uint8_t msb = bus[pc++];
     uint16_t n16 = ((uint16_t)msb << 8) + lsb;
@@ -491,4 +551,151 @@ void GameBoy::jp_cc_n16(std::function<bool()> cc) { // JP cc, nn: conditional ju
         pc = n16;
         t_cycle += 16;
     } else t_cycle += 12;
+}
+
+void CPU::call_cc_nn(std::function<bool()> cc) { // CALL cc, n16: conditional function call
+    uint8_t lsb = bus[pc++];
+    uint8_t msb = bus[pc++];
+    uint16_t n16 = ((uint16_t)msb << 8) | lsb;
+    if (cc()) {
+        sp--;
+        bus[sp--] = (uint8_t)(pc >> 8);
+        bus[sp] = (uint8_t)pc;
+        pc = n16;
+        t_cycle += 24;
+    } else t_cycle += 12;
+}
+
+void CPU::call_nn() { // CALL nn: unconditional function call
+    uint8_t lsb = bus[pc++];
+    uint8_t msb = bus[pc++];
+    uint16_t n16 = ((uint16_t)msb << 8) | lsb;
+    sp--;
+    bus[sp--] = (uint8_t)(pc >> 8);
+    bus[sp] = (uint8_t)pc;
+    pc = n16;
+    t_cycle += 24;
+}
+
+void CPU::rst_y(int y) { // RST y*8: unconditional function call to abs fixed addr
+    uint8_t n = y*8;
+    sp--;
+    bus[sp--] = (uint8_t)(pc >> 8);
+    bus[sp] = (uint8_t)pc;
+    pc = 0x0000 | n;
+    t_cycle += 16;
+}
+
+void CPU::cb(uint8_t inst) { // $CB instruction prefix
+    int x = inst >> 6;
+    int y = (inst & 0x38) >> 3;
+    int z = inst & 0x07;
+
+    switch (x) {
+        case 0:
+            rot[y](z);
+            break;
+        case 1: // BIT y, r[z]
+            bit(y, z);
+            break;
+        case 2:
+            res(y, z);
+            break;
+        case 3:
+            set(y, z);
+            break;
+    }
+}
+
+// $CB prefixed register roll/shifts or memory location tests
+void CPU::rlc(int z) { // RLC r8: rotate left circular
+    bool b7 = *r[z]() >> 7;
+    *r[z]() = (*r[z]() << 1) | b7;
+    reg.setFlag('z', *r[z]() == 0);
+    reg.setFlag('n', 0);
+    reg.setFlag('h', 0);
+    reg.setFlag('c', b7);
+    t_cycle += (z == 6) ? 16 : 8;
+}
+void CPU::rrc(int z) { // RRC r8: rotate right circular
+    bool b0 = *r[z]() % 2;
+    *r[z]() = (*r[z]() >> 1) | (b0 << 7);
+    reg.setFlag('z', *r[z]() == 0);
+    reg.setFlag('n', 0);
+    reg.setFlag('h', 0);
+    reg.setFlag('c', b0);
+    t_cycle += (z == 6) ? 16 : 8;
+}
+void CPU::rl(int z) { // RL r8: rotate left through carry
+    bool b7 = *r[z]() >> 7;
+    *r[z]() = (*r[z]() << 1) | reg.getFlag('c');
+    reg.setFlag('z', *r[z]() == 0);
+    reg.setFlag('n', 0);
+    reg.setFlag('h', 0);
+    reg.setFlag('c', b7);
+    t_cycle += (z == 6) ? 16 : 8;
+}
+void CPU::rr(int z) { // RR r8: rotate right through carry
+    bool b0 = *r[z]() % 2;
+    *r[z]() = (*r[z]() >> 1) | (reg.getFlag('c') << 7);
+    reg.setFlag('z', *r[z]() == 0);
+    reg.setFlag('n', 0);
+    reg.setFlag('h', 0);
+    reg.setFlag('c', b0);
+    t_cycle += (z == 6) ? 16 : 8;
+}
+void CPU::sla(int z) { // SLA r8: shift left arithmetic
+    bool b7 = *r[z]() >> 7;
+    *r[z]() <<= 1;
+    reg.setFlag('z', *r[z]() == 0);
+    reg.setFlag('n', 0);
+    reg.setFlag('h', 0);
+    reg.setFlag('c', b7);
+    t_cycle += (z == 6) ? 16 : 8;
+}
+void CPU::sra(int z) { // SRA r8: shift right arithmetic
+    uint8_t val = *r[z]();
+    bool b0 = val & 0x01;
+    *r[z]() = (val >> 1) | (val & 0x80);
+    reg.setFlag('z', *r[z]() == 0);
+    reg.setFlag('n', 0);
+    reg.setFlag('h', 0);
+    reg.setFlag('c', b0);
+    t_cycle += (z == 6) ? 16 : 8;
+}
+void CPU::swap(int z) { // SWAP r8: swap high and low nibbles of r8
+    uint8_t lownib = *r[z]() & 0x0F;
+    *r[z]() = (*r[z]() >> 4) | (lownib << 4);
+    reg.setFlag('z', *r[z]() == 0);
+    reg.setFlag('n', 0);
+    reg.setFlag('h', 0);
+    reg.setFlag('c', 0);
+    t_cycle += (z == 6) ? 16 : 8;
+}
+void CPU::srl(int z) { // SRL r8: shift right logical
+    bool b0 = *r[z]() % 2;
+    *r[z]() >>= 1;
+    reg.setFlag('z', *r[z]() == 0);
+    reg.setFlag('n', 0);
+    reg.setFlag('h', 0);
+    reg.setFlag('c', b0);
+    t_cycle += (z == 6) ? 16 : 8;
+}
+
+// $CB prefixed bit operations
+void CPU::bit(int y, int z) { // BIT y, r8: test bit y of r8
+    bool set = (*r[z]() & (1 << y)) >> y;
+
+    reg.setFlag('z', !set);
+    reg.setFlag('n', 0);
+    reg.setFlag('h', 1);
+    t_cycle += (z == 6) ? 12 : 8;
+}
+void CPU::res(int y, int z) { // RES y, r8: reset bit y of r8 to zero
+    *r[z]() &= ~(1 << y);
+    t_cycle += (z == 6) ? 16 : 8;
+}
+void CPU::set(int y, int z) { // SET y, r8: set bit y of r8 to 1
+    *r[z]() |= (1 << y);
+    t_cycle += (z == 6) ? 16 : 8;
 }
