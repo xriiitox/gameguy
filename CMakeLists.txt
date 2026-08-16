@@ -18,6 +18,17 @@ file(COPY ${ROMS} DESTINATION .)
 add_library(imgui STATIC ${IMGUI_SOURCES})
 
 find_package(SDL3 REQUIRED)
+find_package(PkgConfig REQUIRED)
+
+pkg_check_modules(DBUS REQUIRED IMPORTED_TARGET dbus-1)
+pkg_check_modules(WAYLAND REQUIRED IMPORTED_TARGET wayland-client)
+
+add_library(nfd STATIC IMPORTED)
+set_target_properties(nfd PROPERTIES
+  IMPORTED_LOCATION "${CMAKE_SOURCE_DIR}/libnfd.a"
+  INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_SOURCE_DIR}/nfd"
+  INTERFACE_LINK_LIBRARIES "PkgConfig::DBUS;PkgConfig::WAYLAND"
+)
 
 add_executable(${PROJECT_NAME} main.cpp)
 
@@ -25,6 +36,8 @@ target_include_directories(${PROJECT_NAME} PRIVATE
   ${IMGUI_PATH}
   ${IMGUI_PATH}/backends
   ${IMGUI_PATH}/misc/cpp
+  ${DBUS_INCLUDE_DIRS}
+  nfd
 )
 
 target_include_directories(imgui PUBLIC
@@ -40,7 +53,9 @@ target_sources(${PROJECT_NAME} PRIVATE
   config.cpp
 )
 
-add_subdirectory(${CMAKE_SOURCE_DIR}/nativefiledialog-extended)
-
-target_link_libraries(${PROJECT_NAME} PRIVATE SDL3::SDL3 imgui nfd)
+target_link_libraries(${PROJECT_NAME} PRIVATE
+  SDL3::SDL3
+  imgui
+  nfd
+)
 target_link_libraries(imgui PUBLIC SDL3::SDL3)

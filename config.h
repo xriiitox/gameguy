@@ -1,5 +1,5 @@
 #include "gb.h"
-#include "nfd.hpp"
+#include <nfd.hpp>
 #include <vector>
 #include <string>
 #include <SDL3/SDL.h>

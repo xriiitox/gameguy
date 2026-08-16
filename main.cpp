@@ -13,8 +13,8 @@
 #include "config.h"
 #include <iostream>
 #include <memory>
-#include "nfd.hpp"
-#include "nfd_sdl2.h"
+#include <nfd.hpp>
+#include <nfd_sdl2.h>
 
 NFD::UniquePath outPath;
 
@@ -100,8 +100,6 @@ int main (int argc, char* argv[]) {
     ImGui_ImplSDLRenderer3_Shutdown();
     ImGui_ImplSDL3_Shutdown();
     ImGui::DestroyContext();
-
-    NFD_Quit();
 
     SDL_DestroyRenderer(ren);
     SDL_DestroyWindow(win);

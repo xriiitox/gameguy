@@ -1,8 +1,8 @@
 #include "gb.h"
 #include "imgui.h"
 #include "config.h"
-#include "nfd.hpp"
-#include "nfd_sdl2.h"
+#include <nfd.hpp>
+#include <nfd_sdl2.h>
 #include <SDL3/SDL.h>
 #include <vector>
 #include <string>
