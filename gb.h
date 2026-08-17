@@ -18,16 +18,19 @@ class GameBoy {
         std::shared_ptr<Bus> bus;
 
         std::shared_ptr<CPU> cpu;
-        uint16_t sysclk = 0;
 
         double cycle_dt = 1.0 / 4194304;
         double now_seconds();
         double t = now_seconds();
         double next_inst = t;
 
+        void handle_interrupts();
+
     public:
         GameBoy(GBConfig gbconf);
         void cycle();
         void tick();
+        uint16_t sysclk = 0;
+        int timer_count = 0;
         int evilCounter = 0;
 };

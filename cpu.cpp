@@ -184,11 +184,11 @@ void CPU::opcode(uint8_t inst) {
                                 break;
                             }
                             case 1: {// RETI
+                                ime = 1;
                                 uint8_t lsb = *bus->read(sp++);
                                 uint8_t msb = *bus->read(sp++);
                                 gb->tick();
                                 pc = ((uint16_t)msb << 8) + lsb;
-                                ime = 1;
                                 gb->tick();
                                 break;
                             }

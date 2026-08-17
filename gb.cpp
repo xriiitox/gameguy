@@ -18,8 +18,43 @@ double GameBoy::now_seconds() {
 
 void GameBoy::tick() { // m-cycles
     cpu->t_cycle += 4;
-    sysclk += 4;
-    // timer tick TODO
+
+    // timers
+    timer_count++;
+    sysclk += 4; // system counter/div
+    if (bus->tac & 0x04) { // TAC/TIMA
+        switch (bus->tac & 0x03) {
+            case 0:
+                if (timer_count % 256 == 0) {
+                    bus->tima++;
+                    if (bus->tima == 0) bus->IF |= (1 << 2); // request timer interrupt
+                    timer_count = 0;
+                }
+                break;
+            case 1:
+                if (timer_count % 4 == 0) {
+                    bus->tima++;
+                    if (bus->tima == 0) bus->IF |= (1 << 2); // request timer interrupt
+                    timer_count = 0;
+                }
+                break;
+            case 2:
+                if (timer_count % 16 == 0) {
+                    bus->tima++;
+                    if (bus->tima == 0) bus->IF |= (1 << 2); // request timer interrupt
+                    timer_count = 0;
+                }
+                break;
+            case 3:
+                if (timer_count % 64 == 0) {
+                    bus->tima++;
+                    if (bus->tima == 0) bus->IF |= (1 << 2); // request timer interrupt
+                    timer_count = 0;
+                }
+                break;
+        }
+    }
+
     // apu tick TODO
     // ppu tick TODO
 }
@@ -32,14 +67,57 @@ void GameBoy::cycle() {
 
         // if (cpu->pc == 0x0206) cpu->debugPrint();
         cpu->opcode(*bus->read(cpu->pc++));
-        cpu->t_cycle -= 4; // compensate for opcode/debug read?
+        cpu->t_cycle -= 4; // compensate for opcode read
         next_inst += (cpu->t_cycle) * cycle_dt;
+    }
 
-        // serial out
-        if (*bus->read(0xFF02) == 0x81) {
-            std::cout << (char)*bus->read(0xFF01) << std::flush;
-            bus->write(0xFF02, 0);
+    handle_interrupts();
+
+}
+
+void GameBoy::handle_interrupts() {
+    if (cpu->ime) {
+        // an interrupt is enabled and allowed
+        if (*bus->read(0xFFFF) & *bus->read(0xFF0F)) {
+            // vblank
+            if ((*bus->read(0xFFFF) & 1) & (*bus->read(0xFF0F) & 1)) {
+                bus->write(--cpu->sp, cpu->pc >> 8);
+                bus->write(--cpu->sp, cpu->pc & 0xFF);
+                cpu->pc = 0x40;
+                bus->write(0xFF0F, *bus->read(0xFF0F) & ~1);
+            }
+
+            // STAT
+            if ((*bus->read(0xFFFF) & 2) & (*bus->read(0xFF0F) & 2)) {
+                bus->write(--cpu->sp, cpu->pc >> 8);
+                bus->write(--cpu->sp, cpu->pc & 0xFF);
+                cpu->pc = 0x48;
+                bus->write(0xFF0F, *bus->read(0xFF0F) & ~2);
+            }
+
+            // Timer int
+            if ((*bus->read(0xFFFF) & 4) & (*bus->read(0xFF0F) & 4)) {
+                bus->write(--cpu->sp, cpu->pc >> 8);
+                bus->write(--cpu->sp, cpu->pc & 0xFF);
+                cpu->pc = 0x50;
+                bus->write(0xFF0F, *bus->read(0xFF0F) & ~4);
+            }
+
+            // Serial int
+            if ((*bus->read(0xFFFF) & 8) & (*bus->read(0xFF0F) & 8)) {
+                bus->write(--cpu->sp, cpu->pc >> 8);
+                bus->write(--cpu->sp, cpu->pc & 0xFF);
+                cpu->pc = 0x58;
+                bus->write(0xFF0F, *bus->read(0xFF0F) & ~8);
+            }
+
+            // Joypad int
+            if ((*bus->read(0xFFFF) & 16) & (*bus->read(0xFF0F) & 16)) {
+                bus->write(--cpu->sp, cpu->pc >> 8);
+                bus->write(--cpu->sp, cpu->pc & 0xFF);
+                cpu->pc = 0x60;
+                bus->write(0xFF0F, *bus->read(0xFF0F) & ~16);
+            }
         }
     }
-    // ppu/timers cycle
 }

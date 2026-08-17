@@ -87,9 +87,7 @@ class CPU {
 private:
     // registers
     Registers reg;
-    uint16_t sp = 0xFFFE; // stack pointer
 
-    bool ime = false;
     bool ime_next = false;
     bool halted = false;
 
@@ -212,4 +210,6 @@ public:
     int t_cycle = 0;
     uint16_t pc = 0x0100; // program counter
     void debugPrint();
+    bool ime = false;
+    uint16_t sp = 0xFFFE; // stack pointer
 };
