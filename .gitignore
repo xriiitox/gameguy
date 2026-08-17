@@ -11,8 +11,9 @@ CTestTestfile.cmake
 _deps
 CMakeUserPresets.json
 build/
-*.ch8
+*.gb
 .cache/*
+testroms/
 
 # CLion
 #  JetBrains specific template is maintained in a separate JetBrains.gitignore that can

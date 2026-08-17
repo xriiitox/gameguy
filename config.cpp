@@ -13,6 +13,9 @@ void MakeConfigBar(SDL_Window* win, GBConfig& gbconf, std::vector<std::string> r
     if (ImGui::BeginMainMenuBar()) {
         if (ImGui::BeginMenu("File")) {
             if (ImGui::MenuItem("Open ROM")) {
+                gbconf.run = false;
+                gbconf.filename = "";
+                gbconf.firstrun = true;
                 nfdwindowhandle_t window;
                 NFD_GetNativeWindowFromSDLWindow(win, &window);
                 nfdresult_t result = NFD::OpenDialog(outPath, &filter, 1, nullptr, window);

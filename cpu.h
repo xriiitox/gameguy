@@ -2,6 +2,7 @@
 #include <map>
 #include <functional>
 #include <iostream>
+#include "bus.h"
 
 #pragma once
 
@@ -92,7 +93,8 @@ private:
     bool ime_next = false;
     bool halted = false;
 
-    uint8_t* bus;
+    Bus* bus;
+    void* gub;
 
     // instuction functions
     void jr_cc_e8(std::function<bool()> cc);
@@ -118,7 +120,7 @@ private:
         { 3, [this]{ return this->reg.e; } },
         { 4, [this]{ return this->reg.h; } },
         { 5, [this]{ return this->reg.l; } },
-        { 6, [this]{ return &this->bus[this->reg.hl]; } }, // pointer to memory address pointed to by HL
+        { 6, [this]{ return this->bus->read(this->reg.hl); } }, // pointer to memory address pointed to by HL
         { 7, [this]{ return this->reg.a; } }
     };
 
@@ -205,8 +207,9 @@ private:
         { 7, [this](int z){ this->srl(z); } },
     };
 public:
-    CPU(uint8_t bus[]);
+    CPU(Bus* bus, void* gb);
     void opcode(uint8_t inst);
     int t_cycle = 0;
-    uint16_t pc = 0x100; // program counter
+    uint16_t pc = 0x0100; // program counter
+    void debugPrint();
 };

@@ -51,6 +51,7 @@ target_sources(${PROJECT_NAME} PRIVATE
   mem.cpp
   cpu.cpp
   config.cpp
+  bus.cpp
 )
 
 target_link_libraries(${PROJECT_NAME} PRIVATE

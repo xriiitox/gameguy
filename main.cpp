@@ -48,7 +48,7 @@ int main (int argc, char* argv[]) {
     GBConfig gbconf;
     gbconf.filename = "";
     gbconf.run = false;
-    bool firstrun = true;
+    gbconf.firstrun = true;
 
     bool quit = false;
     bool configBar = true;
@@ -82,9 +82,10 @@ int main (int argc, char* argv[]) {
             MakeConfigBar(win, gbconf, roms, filterItem);
         }
         if (gbconf.run) {
-            if (firstrun) {
+            if (gbconf.firstrun) {
+                std::cout << "restart emu" << std::endl;
                 gb = std::make_unique<GameBoy>(gbconf);
-                firstrun = false;
+                gbconf.firstrun = false;
             }
             gb->cycle();
         }
