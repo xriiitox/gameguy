@@ -36,7 +36,7 @@ public:
     uint8_t hram[0xFFFE - 0xFF80+1]; // high ram
     uint8_t ie = 0;
 
-    uint8_t pholder = 0xFF;
+    uint8_t openBus = 0xFF;
 
     void write(uint16_t addr, uint8_t val, bool tk = true);
     uint8_t* read(uint16_t addr, bool tk = true, bool bypass = false);

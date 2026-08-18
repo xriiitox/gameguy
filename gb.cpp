@@ -57,8 +57,8 @@ void GameBoy::tick() { // m-cycles
 
     // ppu tick TODO
     // LYC:LY compare
-    bus->stat = bus->ly == bus->lyc ? bus->stat | 0x04 : bus->stat & ~0x04;
-    if (bus->ly == bus->lyc) bus->IF |= 0x02; // request stat interrupt
+    // bus->stat = bus->ly == bus->lyc ? bus->stat | 0x04 : bus->stat & ~0x04;
+    // if (bus->ly == bus->lyc) bus->IF |= 0x02; // request stat interrupt
 
     // oam dma
     tick_dma();
@@ -81,14 +81,18 @@ void GameBoy::cycle() {
             }
         } else {
             handle_interrupts();
+            cpu->t_cycle = 0;
             uint8_t opcode = *bus->read(cpu->pc++);
-            if (opcode == 0x40) { // LD B, B
-                if (*cpu->reg.b == 3 && *cpu->reg.c == 5 && *cpu->reg.d == 8 && *cpu->reg.e == 13 && *cpu->reg.h == 21 && *cpu->reg.l == 34) {
-                    std::cout << "Mooneye Test PASSED!\n";
-                } else {
-                    std::cout << "Mooneye Test FAILED! Error code A = " << (int)*cpu->reg.a << "\n";
-                }
+            if (opcode == 0x40) {
+                std::cout << "Test ended. Reg A: " << (int)*cpu->reg.a
+                          << " | B: " << (int)*cpu->reg.b
+                          << " | C: " << (int)*cpu->reg.c
+                          << " | D: " << (int)*cpu->reg.d
+                          << " | E: " << (int)*cpu->reg.e
+                          << " | H: " << (int)*cpu->reg.h
+                          << " | L: " << (int)*cpu->reg.l << "\n";
             }
+            // std::cout << "PC: " << std::hex << (cpu->pc - 1) << " Op: " << (int)opcode << "\n";
             cpu->opcode(opcode);
             next_inst += (cpu->t_cycle) * cycle_dt;
         }
@@ -119,13 +123,19 @@ void GameBoy::tick_dma() {
     if (!dma.active) return;
     if (dma.start_delay > 0) {
         dma.start_delay--;
-        if (dma.start_delay == 1) {
+        if (dma.start_delay == 0) {
             dma.bus_locked = true;
         }
         return;
     }
 
-    bus->oam[dma.index] = *bus->read(dma.source + dma.index, false, true);
+    uint16_t src_addr = dma.source + dma.index;
+    uint8_t byte = 0xFF;
+    if (src_addr < 0xFE00) {
+        byte = *bus->read(src_addr, false, true);
+    }
+
+    bus->oam[dma.index] = byte;
 
     dma.index++;
 

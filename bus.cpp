@@ -8,11 +8,24 @@ Bus::Bus(void* gb) {
     *this->div = 0xAB;
 }
 
+bool is_external_bus(uint16_t addr) {
+    return (addr <= 0x7FFF) ||
+           (addr >= 0xA000 && addr <= 0xFDFF);
+}
+
+bool is_vram_bus(uint16_t addr) {
+    return (addr >= 0x8000 && addr <= 0x9FFF);
+}
+
 void Bus::write(uint16_t addr, uint8_t val, bool tk) {
     if (tk) ((GameBoy*)this->gb)->tick();
     if (((GameBoy*)this->gb)->dma.bus_locked) {
-        if (addr < 0xFF80 || addr > 0xFFFE) return;
-    }
+            uint16_t dma_src = ((GameBoy*)this->gb)->dma.source;
+
+            if (addr >= 0xFE00 && addr <= 0xFE9F) return; // OAM locked
+            if (is_external_bus(dma_src) && is_external_bus(addr)) return;
+            if (is_vram_bus(dma_src) && is_vram_bus(addr)) return;
+        }
     if (addr <= 0x1FFF) return; // MBC RAM enable
     if (addr >= 0x2000 && addr <= 0x3FFF) { switch_rom_bank(val); return; }
     if (addr <= 0x7FFF) return; // ROM is obviously read only
@@ -51,11 +64,30 @@ void Bus::write(uint16_t addr, uint8_t val, bool tk) {
 
 uint8_t* Bus::read(uint16_t addr, bool tk, bool bypass) {
     bool isdma = ((GameBoy*)this->gb)->dma.bus_locked;
-    if (tk && (!isdma || (addr >= 0xFF80 && addr <= 0xFFFE))) ((GameBoy*)this->gb)->tick(); // tick if read from hram during dma
+    if (tk) ((GameBoy*)gb)->tick();
+    // if (tk && (!isdma || (addr >= 0xFF80 && addr <= 0xFFFE))) ((GameBoy*)this->gb)->tick(); // tick if read from hram during dma
     // only allow reads from hram or source addr during dma
     if (!bypass && isdma) {
-        if (addr < 0xFF80 || addr > 0xFFFE) return &pholder;
-    }
+            uint16_t dma_src = ((GameBoy*)this->gb)->dma.source;
+
+            // OAM is always locked for CPU reads during DMA
+            if (addr >= 0xFE00 && addr <= 0xFE9F) {
+                static uint8_t open_bus = 0xFF;
+                return &open_bus;
+            }
+
+            // Check for conflict on External Bus
+            if (is_external_bus(dma_src) && is_external_bus(addr)) {
+                static uint8_t open_bus = 0xFF;
+                return &open_bus;
+            }
+
+            // Check for conflict on VRAM Bus
+            if (is_vram_bus(dma_src) && is_vram_bus(addr)) {
+                static uint8_t open_bus = 0xFF;
+                return &open_bus;
+            }
+        }
     if (addr <= 0x3FFF) return &bank0[addr];
     if (addr <= 0x7FFF) return &bank1[addr - 0x4000];
     if (addr <= 0x9FFF) return &vram[addr - 0x8000];
@@ -88,8 +120,16 @@ uint8_t* Bus::read(uint16_t addr, bool tk, bool bypass) {
     if (addr == 0xFF4B) return &wx;
     if (addr <= 0xFFFE) return &hram[addr - 0xFF80];
     if (addr == 0xFFFF) return &ie;
-    std::cout << "how did you get here" << std::endl;
-    return nullptr;
+
+    if (addr >= 0xFF00 && addr <= 0xFF7F) {
+        static uint8_t io_open_bus = 0xFF;
+        io_open_bus = 0xFF;
+        return &io_open_bus;
+    }
+
+    static uint8_t default_open_bus = 0xFF;
+    default_open_bus = 0xFF;
+    return &default_open_bus;
 }
 
 // stealing code from gb.cpp :thumbsup:
@@ -140,9 +180,13 @@ void Bus::write_tma(uint8_t val) {
 
 void Bus::write_dma(uint8_t val) {
     GameBoy* gub = (GameBoy*)gb;
-    gub->dma.source = val << 8;
+    uint16_t src = val << 8;
+    if (src >= 0xE000) {
+        src -= 0x2000; // Map 0xE000-0xFFFF down to 0xC000-0xDF00
+    }
+    gub->dma.source = src;
     gub->dma.index = 0;
-    gub->dma.start_delay = 2;
+    gub->dma.start_delay = 1;
     gub->dma.active = true;
     gub->dma.bus_locked = false;
     dma = val;

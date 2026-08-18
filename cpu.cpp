@@ -21,7 +21,6 @@ void CPU::opcode(uint8_t inst) {
     int z = inst & 0x07;
     int p = y >> 1;
     int q = y % 2;
-    t_cycle = 0;
 
     GameBoy* gb = (GameBoy*)gub;
 
