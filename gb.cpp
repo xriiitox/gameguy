@@ -19,40 +19,41 @@ double GameBoy::now_seconds() {
 void GameBoy::tick() { // m-cycles
     cpu->t_cycle += 4;
 
-    // timers
-    timer_count++;
-    sysclk += 4; // system counter/div
-    if (bus->tac & 0x04) { // TAC/TIMA
-        switch (bus->tac & 0x03) {
-            case 0:
-                if (timer_count % 256 == 0) {
-                    bus->tima++;
-                    if (bus->tima == 0) bus->IF |= (1 << 2); // request timer interrupt
-                    timer_count = 0;
-                }
-                break;
-            case 1:
-                if (timer_count % 4 == 0) {
-                    bus->tima++;
-                    if (bus->tima == 0) bus->IF |= (1 << 2); // request timer interrupt
-                    timer_count = 0;
-                }
-                break;
-            case 2:
-                if (timer_count % 16 == 0) {
-                    bus->tima++;
-                    if (bus->tima == 0) bus->IF |= (1 << 2); // request timer interrupt
-                    timer_count = 0;
-                }
-                break;
-            case 3:
-                if (timer_count % 64 == 0) {
-                    bus->tima++;
-                    if (bus->tima == 0) bus->IF |= (1 << 2); // request timer interrupt
-                    timer_count = 0;
-                }
-                break;
+    uint16_t sysOld = sysclk;
+    sysclk += 4;
+
+    if (tima_reload_pending) {
+        bus->tima = bus->tma;
+        bus->IF |= (1 << 2);
+        tima_reload_pending = false;
+    }
+
+    static const uint16_t bit_masks[4] = {
+        (1 << 9),
+        (1 << 3),
+        (1 << 5),
+        (1 << 7),
+    };
+
+    uint16_t mask = bit_masks[bus->tac & 0x03];
+    bool timer_enable = (bus->tac & 0x04) != 0;
+
+    // falling edge detector
+    bool prev_signal = (sysOld & mask) && timer_enable;
+    bool signal = (sysclk & mask) && timer_enable;
+
+    if (prev_signal && !signal) {
+        bus->tima++;
+        if (bus->tima == 0) {
+            tima_reload_pending = true;
         }
+    }
+
+    if (cpu->ei_delay == 2) {
+        cpu->ime = 1;
+        cpu->ei_delay = 0;
+    } else if (cpu->ei_delay == 1) {
+        cpu->ei_delay = 2;
     }
 
     // apu tick TODO
@@ -64,60 +65,38 @@ void GameBoy::cycle() {
     t = now_seconds();
     // inst cycle
     while (t >= next_inst) {
+        if (cpu->halted) {
+            tick();
+            next_inst += 4 * cycle_dt;
 
-        // if (cpu->pc == 0x0206) cpu->debugPrint();
-        cpu->opcode(*bus->read(cpu->pc++));
-        cpu->t_cycle -= 4; // compensate for opcode read
-        next_inst += (cpu->t_cycle) * cycle_dt;
+            if (*bus->read(0xFFFF, false) & *bus->read(0xFF0F, false) & 0x1F) {
+                cpu->halted = false;
+                if (cpu->ime) handle_interrupts();
+            }
+        } else {
+            handle_interrupts();
+            cpu->opcode(*bus->read(cpu->pc++));
+            next_inst += (cpu->t_cycle) * cycle_dt;
+        }
     }
-
-    handle_interrupts();
-
 }
 
 void GameBoy::handle_interrupts() {
-    if (cpu->ime) {
-        // an interrupt is enabled and allowed
-        if (*bus->read(0xFFFF) & *bus->read(0xFF0F)) {
-            // vblank
-            if ((*bus->read(0xFFFF) & 1) & (*bus->read(0xFF0F) & 1)) {
-                bus->write(--cpu->sp, cpu->pc >> 8);
-                bus->write(--cpu->sp, cpu->pc & 0xFF);
-                cpu->pc = 0x40;
-                bus->write(0xFF0F, *bus->read(0xFF0F) & ~1);
-            }
+    if (!cpu->ime) return;
 
-            // STAT
-            if ((*bus->read(0xFFFF) & 2) & (*bus->read(0xFF0F) & 2)) {
-                bus->write(--cpu->sp, cpu->pc >> 8);
-                bus->write(--cpu->sp, cpu->pc & 0xFF);
-                cpu->pc = 0x48;
-                bus->write(0xFF0F, *bus->read(0xFF0F) & ~2);
-            }
+    uint8_t pending = *bus->read(0xFFFF, false) & *bus->read(0xFF0F, false) & 0x1F;
+    if (!pending) return;
 
-            // Timer int
-            if ((*bus->read(0xFFFF) & 4) & (*bus->read(0xFF0F) & 4)) {
-                bus->write(--cpu->sp, cpu->pc >> 8);
-                bus->write(--cpu->sp, cpu->pc & 0xFF);
-                cpu->pc = 0x50;
-                bus->write(0xFF0F, *bus->read(0xFF0F) & ~4);
-            }
-
-            // Serial int
-            if ((*bus->read(0xFFFF) & 8) & (*bus->read(0xFF0F) & 8)) {
-                bus->write(--cpu->sp, cpu->pc >> 8);
-                bus->write(--cpu->sp, cpu->pc & 0xFF);
-                cpu->pc = 0x58;
-                bus->write(0xFF0F, *bus->read(0xFF0F) & ~8);
-            }
-
-            // Joypad int
-            if ((*bus->read(0xFFFF) & 16) & (*bus->read(0xFF0F) & 16)) {
-                bus->write(--cpu->sp, cpu->pc >> 8);
-                bus->write(--cpu->sp, cpu->pc & 0xFF);
-                cpu->pc = 0x60;
-                bus->write(0xFF0F, *bus->read(0xFF0F) & ~16);
-            }
+    static const uint16_t vectors[5] = { 0x40, 0x48, 0x50, 0x58, 0x60 };
+    for (int i = 0; i < 5; i++) {
+        if (pending & (1 << i)) {
+            cpu->ime = false;
+            tick();
+            bus->write(0xFF0F, *bus->read(0xFF0F) & ~(1 << i));
+            bus->write(--cpu->sp, cpu->pc >> 8);
+            bus->write(--cpu->sp, cpu->pc & 0xFF);
+            cpu->pc = vectors[i];
+            break;
         }
     }
 }

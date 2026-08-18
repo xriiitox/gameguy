@@ -24,11 +24,15 @@ public:
     uint8_t hram[0xFFFE - 0xFF80+1]; // high ram
     uint8_t ie = 0;
 
-    void write(uint16_t addr, uint8_t val);
-    uint8_t* read(uint16_t addr);
+    void write(uint16_t addr, uint8_t val, bool tk = true);
+    uint8_t* read(uint16_t addr, bool tk = true);
 
     void* gb;
 
     Bus(void* gb);
+private:
+    void write_timer(uint8_t val, bool div);
+    void write_tima(uint8_t val);
+    void write_tma(uint8_t val);
 
 };

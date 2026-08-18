@@ -88,9 +88,6 @@ private:
     // registers
     Registers reg;
 
-    bool ime_next = false;
-    bool halted = false;
-
     Bus* bus;
     void* gub;
 
@@ -211,5 +208,7 @@ public:
     uint16_t pc = 0x0100; // program counter
     void debugPrint();
     bool ime = false;
+    uint8_t ei_delay = 0;
     uint16_t sp = 0xFFFE; // stack pointer
+    bool halted = false;
 };
