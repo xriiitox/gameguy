@@ -24,9 +24,8 @@ class GameBoy {
         double t = now_seconds();
         double next_inst = t;
 
-
-
         void handle_interrupts();
+        void tick_dma();
 
     public:
         GameBoy(GBConfig gbconf);
@@ -37,4 +36,12 @@ class GameBoy {
         uint16_t sysclk = 0;
         int timer_count = 0;
         int evilCounter = 0;
+
+        struct DMA {
+            bool active = false;
+            bool bus_locked = false;
+            uint16_t source = 0;
+            uint8_t index = 0;
+            int start_delay = 0;
+        } dma;
 };

@@ -85,9 +85,6 @@ public:
 
 class CPU {
 private:
-    // registers
-    Registers reg;
-
     Bus* bus;
     void* gub;
 
@@ -202,6 +199,7 @@ private:
         { 7, [this](int z){ this->srl(z); } },
     };
 public:
+    Registers reg;
     CPU(Bus* bus, void* gb);
     void opcode(uint8_t inst);
     int t_cycle = 0;

@@ -8,7 +8,6 @@ GameBoy::GameBoy(GBConfig gbconf) {
     this->bus = std::make_shared<Bus>(this);
     Load_Rom(gbconf.filename, bus.get());
     this->cpu = std::make_shared<CPU>(this->bus.get(), this);
-    std::cout << "done with constructor" << std::endl;
 }
 
 using Clock = std::chrono::steady_clock;
@@ -56,8 +55,15 @@ void GameBoy::tick() { // m-cycles
         cpu->ei_delay = 2;
     }
 
-    // apu tick TODO
     // ppu tick TODO
+    // LYC:LY compare
+    bus->stat = bus->ly == bus->lyc ? bus->stat | 0x04 : bus->stat & ~0x04;
+    if (bus->ly == bus->lyc) bus->IF |= 0x02; // request stat interrupt
+
+    // oam dma
+    tick_dma();
+
+    // apu tick TODO
 }
 
 // runs instructions
@@ -75,7 +81,15 @@ void GameBoy::cycle() {
             }
         } else {
             handle_interrupts();
-            cpu->opcode(*bus->read(cpu->pc++));
+            uint8_t opcode = *bus->read(cpu->pc++);
+            if (opcode == 0x40) { // LD B, B
+                if (*cpu->reg.b == 3 && *cpu->reg.c == 5 && *cpu->reg.d == 8 && *cpu->reg.e == 13 && *cpu->reg.h == 21 && *cpu->reg.l == 34) {
+                    std::cout << "Mooneye Test PASSED!\n";
+                } else {
+                    std::cout << "Mooneye Test FAILED! Error code A = " << (int)*cpu->reg.a << "\n";
+                }
+            }
+            cpu->opcode(opcode);
             next_inst += (cpu->t_cycle) * cycle_dt;
         }
     }
@@ -98,5 +112,25 @@ void GameBoy::handle_interrupts() {
             cpu->pc = vectors[i];
             break;
         }
+    }
+}
+
+void GameBoy::tick_dma() {
+    if (!dma.active) return;
+    if (dma.start_delay > 0) {
+        dma.start_delay--;
+        if (dma.start_delay == 1) {
+            dma.bus_locked = true;
+        }
+        return;
+    }
+
+    bus->oam[dma.index] = *bus->read(dma.source + dma.index, false, true);
+
+    dma.index++;
+
+    if (dma.index == 160) {
+        dma.active = false;
+        dma.bus_locked = false;
     }
 }
