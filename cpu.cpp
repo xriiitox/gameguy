@@ -119,6 +119,7 @@ void CPU::opcode(uint8_t inst) {
             break;
         case 1: // 8bit loading (LD r8, r8)
             if (z == 6 && y == 6) { // HALT: halt system clock
+                if (ime == 0 && ((bus->ie & bus->IF & 0x1F) != 0)) { halt_bug = true; break;}
                 halted = true;
                 break;
             }
@@ -308,19 +309,46 @@ void CPU::inc16(int p) {
 }
 
 void CPU::inc8(int y) {
-    uint8_t old = *r[y]();
-    (*r[y]())++;
-    reg.setFlag('z', (uint8_t)(old + 1) == 0);
-    reg.setFlag('n', 0);
-    reg.setFlag('h', (old & 0x0F) == 0x0F);
+    if (y == 6) { // INC (HL)
+            uint8_t old = *bus->read(reg.hl, true);
+            uint8_t val = old + 1;
+
+            reg.setFlag('z', val == 0);
+            reg.setFlag('n', 0);
+            reg.setFlag('h', (old & 0x0F) == 0x0F);
+
+            bus->write(reg.hl, val, true);
+        } else { // INC r8 (BC, DE, HL, etc.)
+            uint8_t old = *r[y]();
+            uint8_t val = old + 1;
+            *r[y]() = val;
+
+            reg.setFlag('z', val == 0);
+            reg.setFlag('n', 0);
+            reg.setFlag('h', (old & 0x0F) == 0x0F);
+        }
 }
 
 void CPU::dec8(int y) {
-    uint8_t old = *r[y]();
-    (*r[y]())--;
-    reg.setFlag('z', (uint8_t)(old - 1) == 0);
-    reg.setFlag('n', 1);
-    reg.setFlag('h', (old & 0x0F) == 0x00);
+    if (y == 6) { // DEC (HL)
+            uint8_t old = *bus->read(reg.hl, true);
+            uint8_t val = old - 1;
+
+            reg.setFlag('z', val == 0);
+            reg.setFlag('n', 1);
+            reg.setFlag('h', (old & 0x0F) == 0x00);
+
+            // Cycle 3: Write back to memory
+            bus->write(reg.hl, val, true);
+        } else { // DEC r8
+            uint8_t old = *r[y]();
+            uint8_t val = old - 1;
+            *r[y]() = val;
+
+            reg.setFlag('z', val == 0);
+            reg.setFlag('n', 1);
+            reg.setFlag('h', (old & 0x0F) == 0x00);
+        }
 }
 
 // Assorted accumulator/flag operations block

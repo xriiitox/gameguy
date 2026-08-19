@@ -81,17 +81,15 @@ int main (int argc, char* argv[]) {
         if (configBar) {
             MakeConfigBar(win, gbconf, roms, filterItem);
         }
+        SDL_RenderClear(ren);
         if (gbconf.run) {
             if (gbconf.firstrun) {
-                std::cout << "restart emu" << std::endl;
-                gb = std::make_unique<GameBoy>(gbconf);
+                gb = std::make_unique<GameBoy>(gbconf, ren);
                 gbconf.firstrun = false;
             }
             gb->cycle();
+            SDL_RenderTexture(ren, gb->texture, nullptr, nullptr);
         }
-
-
-        SDL_RenderClear(ren);
 
         ImGui::Render();
         ImGui_ImplSDLRenderer3_RenderDrawData(ImGui::GetDrawData(), ren);

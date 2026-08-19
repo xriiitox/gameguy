@@ -209,4 +209,5 @@ public:
     uint8_t ei_delay = 0;
     uint16_t sp = 0xFFFE; // stack pointer
     bool halted = false;
+    bool halt_bug = false;
 };

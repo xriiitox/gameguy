@@ -1,11 +1,15 @@
 #include "bus.h"
 #include "gb.h"
 #include "mem.h"
+#include <algorithm>
 
 Bus::Bus(void* gb) {
     this->gb = gb;
     this->div = (uint8_t*)&((GameBoy*)this->gb)->sysclk + 1;
     *this->div = 0xAB;
+    for (auto bank : bankx) {
+        bank.fill(0);
+    }
 }
 
 bool is_external_bus(uint16_t addr) {
@@ -26,8 +30,8 @@ void Bus::write(uint16_t addr, uint8_t val, bool tk) {
             if (is_external_bus(dma_src) && is_external_bus(addr)) return;
             if (is_vram_bus(dma_src) && is_vram_bus(addr)) return;
         }
-    if (addr <= 0x1FFF) return; // MBC RAM enable
-    if (addr >= 0x2000 && addr <= 0x3FFF) { switch_rom_bank(val); return; }
+    if (addr <= 0x1FFF) { ram_en = val; return; } // MBC RAM enable
+    if (addr >= 0x2000 && addr <= 0x3FFF) { switch_rom_bank(val, this); return; }
     if (addr <= 0x7FFF) return; // ROM is obviously read only
     if (addr <= 0x9FFF) { vram[addr - 0x8000] = val; return; } // vram
     if (addr <= 0xBFFF) { eram[addr - 0xA000] = val; return; } // external ram
@@ -50,7 +54,7 @@ void Bus::write(uint16_t addr, uint8_t val, bool tk) {
     if (addr == 0xFF41) { stat = val & 0xF8; return; } // leave last few bits read only
     if (addr == 0xFF42) { scy = val; return; }
     if (addr == 0xFF43) { scx = val; return; }
-    if (addr == 0xFF44) { return; } // readonly
+    if (addr == 0xFF44) { ly = 0; return; } // reset scanline
     if (addr == 0xFF45) { lyc = val; return; }
     if (addr == 0xFF46) { write_dma(val); return; }
     if (addr == 0xFF47) { bgp = val; return; }
@@ -89,7 +93,7 @@ uint8_t* Bus::read(uint16_t addr, bool tk, bool bypass) {
             }
         }
     if (addr <= 0x3FFF) return &bank0[addr];
-    if (addr <= 0x7FFF) return &bank1[addr - 0x4000];
+    if (addr <= 0x7FFF) return &bankx[sel_bank][addr - 0x4000];
     if (addr <= 0x9FFF) return &vram[addr - 0x8000];
     if (addr <= 0xBFFF) return &eram[addr - 0xA000];
     if (addr <= 0xCFFF) return &wram1[addr - 0xC000];

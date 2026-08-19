@@ -52,6 +52,7 @@ target_sources(${PROJECT_NAME} PRIVATE
   cpu.cpp
   config.cpp
   bus.cpp
+  ppu.cpp
 )
 
 target_link_libraries(${PROJECT_NAME} PRIVATE

@@ -1,8 +1,10 @@
 #include <string>
 #include <cstdint>
 #include <memory>
+#include <SDL3/SDL.h>
 #include "cpu.h"
 #include "bus.h"
+#include "ppu.h"
 
 #pragma once
 
@@ -19,6 +21,8 @@ class GameBoy {
 
         std::shared_ptr<CPU> cpu;
 
+        std::shared_ptr<PPU> ppu;
+
         double cycle_dt = 1.0 / 4194304;
         double now_seconds();
         double t = now_seconds();
@@ -26,9 +30,12 @@ class GameBoy {
 
         void handle_interrupts();
         void tick_dma();
+        static int get_interrupt_mask(int IF, int IE);
+
+        int cycles_frame = 0;
 
     public:
-        GameBoy(GBConfig gbconf);
+        GameBoy(GBConfig gbconf, SDL_Renderer* ren);
         void cycle();
         void tick();
         bool tima_reload_pending = false;
@@ -36,6 +43,8 @@ class GameBoy {
         uint16_t sysclk = 0;
         int timer_count = 0;
         int evilCounter = 0;
+
+        SDL_Texture* texture;
 
         struct DMA {
             bool active = false;

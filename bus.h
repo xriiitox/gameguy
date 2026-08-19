@@ -1,4 +1,5 @@
 #include <cstdint>
+#include <array>
 
 #pragma once
 
@@ -6,7 +7,7 @@
 class Bus {
 public:
     uint8_t bank0[0x4000];
-    uint8_t bank1[0x4000]; // switchable via mapper
+    std::array<std::array<uint8_t, 0x4000>, 129> bankx; // switchable via mapper
     uint8_t vram[0x2000]; // switchable if cgb
     uint8_t eram[0x2000]; // from game cart, switchable
     uint8_t wram1[0x1000];
@@ -35,6 +36,11 @@ public:
     uint8_t wx = 0;
     uint8_t hram[0xFFFE - 0xFF80+1]; // high ram
     uint8_t ie = 0;
+
+    // MBC registers
+    int banks = 0;
+    uint8_t ram_en = 0;
+    int sel_bank = 1;
 
     uint8_t openBus = 0xFF;
 

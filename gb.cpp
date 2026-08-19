@@ -1,13 +1,20 @@
 #include "gb.h"
 #include "mem.h"
+#include <SDL3/SDL.h>
+#include <SDL3/SDL_render.h>
+#include <SDL3/SDL_surface.h>
 #include <memory>
 #include <chrono>
 #include <iomanip>
+#include <vector>
 
-GameBoy::GameBoy(GBConfig gbconf) {
+GameBoy::GameBoy(GBConfig gbconf, SDL_Renderer* ren) {
     this->bus = std::make_shared<Bus>(this);
     Load_Rom(gbconf.filename, bus.get());
     this->cpu = std::make_shared<CPU>(this->bus.get(), this);
+    this->ppu = std::make_shared<PPU>(this->bus.get());
+    this->texture = SDL_CreateTexture(ren, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, 160, 144);
+    SDL_SetTextureScaleMode(this->texture, SDL_SCALEMODE_PIXELART);
 }
 
 using Clock = std::chrono::steady_clock;
@@ -17,6 +24,7 @@ double GameBoy::now_seconds() {
 
 void GameBoy::tick() { // m-cycles
     cpu->t_cycle += 4;
+    cycles_frame++;
 
     uint16_t sysOld = sysclk;
     sysclk += 4;
@@ -55,10 +63,7 @@ void GameBoy::tick() { // m-cycles
         cpu->ei_delay = 2;
     }
 
-    // ppu tick TODO
-    // LYC:LY compare
-    // bus->stat = bus->ly == bus->lyc ? bus->stat | 0x04 : bus->stat & ~0x04;
-    // if (bus->ly == bus->lyc) bus->IF |= 0x02; // request stat interrupt
+    ppu->tick();
 
     // oam dma
     tick_dma();
@@ -69,6 +74,8 @@ void GameBoy::tick() { // m-cycles
 // runs instructions
 void GameBoy::cycle() {
     t = now_seconds();
+    static const uint32_t MCYCLES_PER_FRAME = 17556;
+
     // inst cycle
     while (t >= next_inst) {
         if (cpu->halted) {
@@ -80,43 +87,69 @@ void GameBoy::cycle() {
                 if (cpu->ime) handle_interrupts();
             }
         } else {
-            handle_interrupts();
             cpu->t_cycle = 0;
-            uint8_t opcode = *bus->read(cpu->pc++);
-            if (opcode == 0x40) {
-                std::cout << "Test ended. Reg A: " << (int)*cpu->reg.a
-                          << " | B: " << (int)*cpu->reg.b
-                          << " | C: " << (int)*cpu->reg.c
-                          << " | D: " << (int)*cpu->reg.d
-                          << " | E: " << (int)*cpu->reg.e
-                          << " | H: " << (int)*cpu->reg.h
-                          << " | L: " << (int)*cpu->reg.l << "\n";
-            }
-            // std::cout << "PC: " << std::hex << (cpu->pc - 1) << " Op: " << (int)opcode << "\n";
+            handle_interrupts();
+            uint8_t opcode = *bus->read(cpu->pc);
+            if (!cpu->halt_bug) cpu->pc++;
+            else cpu->halt_bug = false;
             cpu->opcode(opcode);
             next_inst += (cpu->t_cycle) * cycle_dt;
         }
     }
+    if (cycles_frame >= MCYCLES_PER_FRAME) {
+        SDL_UpdateTexture(texture, nullptr, ppu->framebuffer, 160*sizeof(uint32_t));
+    }
+
 }
 
 void GameBoy::handle_interrupts() {
     if (!cpu->ime) return;
 
-    uint8_t pending = *bus->read(0xFFFF, false) & *bus->read(0xFF0F, false) & 0x1F;
-    if (!pending) return;
+    uint8_t oldIE = *bus->read(0xFFFF, false);
+    uint8_t oldIF = *bus->read(0xFF0F, false);
+    uint8_t pend = oldIE & oldIF & 0x1F;
+    if (!pend) return;
 
-    static const uint16_t vectors[5] = { 0x40, 0x48, 0x50, 0x58, 0x60 };
+    int irq = -1;
     for (int i = 0; i < 5; i++) {
-        if (pending & (1 << i)) {
-            cpu->ime = false;
-            tick();
-            bus->write(0xFF0F, *bus->read(0xFF0F) & ~(1 << i));
-            bus->write(--cpu->sp, cpu->pc >> 8);
-            bus->write(--cpu->sp, cpu->pc & 0xFF);
-            cpu->pc = vectors[i];
+        if (pend & (1 << i)) {
+            irq = i;
             break;
         }
     }
+
+    cpu->ime = false;
+    tick();
+
+    tick();
+
+    cpu->sp--;
+    bus->write(cpu->sp, cpu->pc >> 8, true);
+
+    uint8_t IE = *bus->read(0xFFFF, false);
+    uint8_t IF = *bus->read(0xFF0F, false);
+    uint8_t final_pend = IE & IF & 0x1F;
+
+    cpu->sp--;
+    bus->write(cpu->sp, cpu->pc & 0xFF, true);
+
+    uint16_t vec = 0;
+    static const uint16_t vectors[5] = { 0x0040, 0x0048, 0x0050, 0x0058, 0x0060 };
+
+    if (irq != -1 && (IE & (1 << irq))) {
+        bus->write(0xFF0F, IF & ~(1 << irq), false);
+        vec = vectors[irq];
+    } else if (final_pend != 0) {
+        for (int i = 0; i < 5; i++) {
+            if (final_pend & (1 << i)) {
+                bus->write(0xFF0F, IF & ~(1 << i), false);
+                vec = vectors[i];
+                break;
+            }
+        }
+    }
+    tick();
+    cpu->pc = vec;
 }
 
 void GameBoy::tick_dma() {
