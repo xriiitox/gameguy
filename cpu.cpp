@@ -9,11 +9,6 @@ CPU::CPU(Bus* bus, void* gb) {
     this->gub = gb;
 }
 
-void CPU::debugPrint() {
-    std::cout << "E=" << std::hex << (int)*reg.e
-               << " Z=" << reg.getFlag('z') << "\n";
-}
-
 // octal decoding
 void CPU::opcode(uint8_t inst) {
     int x = inst >> 6;
@@ -32,8 +27,9 @@ void CPU::opcode(uint8_t inst) {
                         case 0: // nop
                             break;
                         case 1: { // LD [a16], SP: load from stack pointer
-                            uint8_t lsb = *bus->read(pc++);
-                            uint8_t msb = *bus->read(pc++);                            uint16_t num = (msb << 8) + lsb;
+                            uint8_t lsb = bus->read(pc++);
+                            uint8_t msb = bus->read(pc++);
+                            uint16_t num = (msb << 8) + lsb;
                             bus->write(num++, sp & 0x00FF);
                             bus->write(num, sp >> 8);
                             break;
@@ -43,7 +39,7 @@ void CPU::opcode(uint8_t inst) {
                             pc++;
                             break;
                         case 3: { // JR e8: relative jump
-                            int8_t e8 = *bus->read(pc++);
+                            int8_t e8 = bus->read(pc++);
                             pc += e8;
                             gb->tick();
                             break;
@@ -67,16 +63,16 @@ void CPU::opcode(uint8_t inst) {
                     if (q) { // load to A
                         switch (p) {
                             case 0: // LD A, [BC]
-                                *reg.a = *bus->read(reg.bc);
+                                *reg.a = bus->read(reg.bc);
                                 break;
                             case 1: // LD A, [DE]
-                                *reg.a = *bus->read(reg.de);
+                                *reg.a = bus->read(reg.de);
                                 break;
                             case 2: // LD A, [HL+]
-                                *reg.a = *bus->read(reg.hl++);
+                                *reg.a = bus->read(reg.hl++);
                                 break;
                             case 3: // LD A, [HL-]
-                                *reg.a = *bus->read(reg.hl--);
+                                *reg.a = bus->read(reg.hl--);
                                 break;
                         }
                     } else { // load to addr
@@ -110,7 +106,11 @@ void CPU::opcode(uint8_t inst) {
                     dec8(y);
                     break;
                 case 6: // LD r[y], n
-                    *r[y]() = *bus->read(pc++);
+                    if (y == 6) {
+                        bus->write(reg.hl, bus->read(pc++));
+                        break;
+                    }
+                    *r[y]() = bus->read(pc++);
                     break;
                 case 7: // accumulator/flag operations
                     flag_ops[y]();
@@ -119,8 +119,17 @@ void CPU::opcode(uint8_t inst) {
             break;
         case 1: // 8bit loading (LD r8, r8)
             if (z == 6 && y == 6) { // HALT: halt system clock
-                if (ime == 0 && ((bus->ie & bus->IF & 0x1F) != 0)) { halt_bug = true; break;}
+                bool pending = (bus->ie & (bus->IF | 0xE0) & 0x1F) != 0;
+                if (ime == 0 && pending) { halt_bug = true; break;}
+                else if (ime != 0 && pending) { halted = false; break; }
                 halted = true;
+                break;
+            }
+            if (z == 6) {
+                *r[y]() = bus->read(reg.hl);
+                break;
+            } else if (y == 6) {
+                bus->write(reg.hl, *r[z]());
                 break;
             }
             *r[y]() = *r[z]();
@@ -139,16 +148,16 @@ void CPU::opcode(uint8_t inst) {
                             ret_cc(reg.CC[y]);
                             break;
                         case 4: { // LD [0xFF00 + n8], A
-                            uint8_t n8 = *bus->read(pc++);
-                            bus->write(0xFF00+n8, *reg.a);
+                            uint8_t n8 = bus->read(pc++);
+                            bus->write(0xFF00 | n8, *reg.a);
                             break;
                         }
                         case 5: // ADD SP, e8
                             add_sp_e();
                             break;
                         case 6: { // LD A, [0xFF00 + n8]
-                            uint8_t n8 = *bus->read(pc++);
-                            *reg.a = *bus->read(0xFF00 + n8);
+                            uint8_t n8 = bus->read(pc++);
+                            *reg.a = bus->read(0xFF00 + n8);
                             break;
                         }
                         case 7: // LD HL, SP + e8
@@ -160,16 +169,16 @@ void CPU::opcode(uint8_t inst) {
                     if (q) {
                         switch (p) {
                             case 0: { // RET
-                                uint8_t lsb = *bus->read(sp++);
-                                uint8_t msb = *bus->read(sp++);
+                                uint8_t lsb = bus->read(sp++);
+                                uint8_t msb = bus->read(sp++);
                                 gb->tick();
                                 pc = ((uint16_t)msb << 8) + lsb;
                                 break;
                             }
                             case 1: {// RETI
                                 ime = 1;
-                                uint8_t lsb = *bus->read(sp++);
-                                uint8_t msb = *bus->read(sp++);
+                                uint8_t lsb = bus->read(sp++);
+                                uint8_t msb = bus->read(sp++);
                                 gb->tick();
                                 pc = ((uint16_t)msb << 8) + lsb;
                                 break;
@@ -183,10 +192,13 @@ void CPU::opcode(uint8_t inst) {
                                 break;
                         }
                     } else { // POP rp2[p]
-                        uint8_t lsb = *bus->read(sp++);
-                        uint8_t msb = *bus->read(sp++);
-                        *rp2[p]() = ((uint16_t)msb << 8) + lsb;
-                        if (p == 3) *rp2[p]() &= 0xFFF0;
+                        uint8_t lsb = bus->read(sp);
+                        sp++;
+                        uint8_t msb = bus->read(sp);
+                        sp++;
+                        uint16_t val = ((uint16_t)msb << 8) | lsb;
+                        if (p == 3) val &= 0xFFF0;
+                        *rp2[p]() = val;
                     }
                     break;
                 case 2: // Conditional jump
@@ -201,20 +213,20 @@ void CPU::opcode(uint8_t inst) {
                             bus->write(0xFF00 + *reg.c, *reg.a);
                             break;
                         case 5: { // LD [n16], A
-                            uint8_t lsb = *bus->read(pc++);
-                            uint8_t msb = *bus->read(pc++);
+                            uint8_t lsb = bus->read(pc++);
+                            uint8_t msb = bus->read(pc++);
                             uint16_t n16 = ((uint16_t)msb << 8) + lsb;
                             bus->write(n16, *reg.a);
                             break;
                         }
                         case 6: // LD A, [0xFF00 + C]
-                            *reg.a = *bus->read(0xFF00 + *reg.c);
+                            *reg.a = bus->read(0xFF00 + *reg.c);
                             break;
                         case 7: { // LD A, [n16]
-                            uint8_t lsb = *bus->read(pc++);
-                            uint8_t msb = *bus->read(pc++);
+                            uint8_t lsb = bus->read(pc++);
+                            uint8_t msb = bus->read(pc++);
                             uint16_t n16 = ((uint16_t)msb << 8) + lsb;
-                            *reg.a = *bus->read(n16);
+                            *reg.a = bus->read(n16);
                             break;
                         }
                     }
@@ -222,22 +234,22 @@ void CPU::opcode(uint8_t inst) {
                 case 3: // assorted ops
                     switch (y) {
                         case 0: { // JP n16
-                            uint8_t lsb = *bus->read(pc++);
-                            uint8_t msb = *bus->read(pc++);
+                            uint8_t lsb = bus->read(pc++);
+                            uint8_t msb = bus->read(pc++);
                             uint16_t n16 = ((uint16_t)msb << 8) + lsb;
                             gb->tick();
                             pc = n16;
                             break;
                         }
                         case 1: // CB Prefix
-                            cb(*bus->read(pc++));
+                            cb(bus->read(pc++));
                             break;
                         case 6: // DI
                             ei_delay = 0;
                             ime = 0;
                             break;
                         case 7: // EI
-                            ei_delay = 1;
+                            if (ei_delay != 2) ei_delay = 1;
                             break;
                     }
                     break;
@@ -255,10 +267,12 @@ void CPU::opcode(uint8_t inst) {
                     if (q) { // CALL nn
                         call_nn();
                     } else { // PUSH rp2[p]
+                        uint16_t val = *rp2[p]();
                         sp--;
+                        bus->write(sp, (uint8_t)(val >> 8));
                         ((GameBoy*)gub)->tick();
-                        bus->write(sp--, (uint8_t)(*rp2[p]() >> 8));
-                        bus->write(sp, (uint8_t)*rp2[p]());
+                        sp--;
+                        bus->write(sp, (uint8_t)(val & 0xFF));
                     }
                     break;
                 case 6: // alu[y] n8: accumulator and immediate n8
@@ -274,7 +288,7 @@ void CPU::opcode(uint8_t inst) {
 }
 
 void CPU::jr_cc_e8(std::function<bool()> cc) { // JR cc, e8: jump to pc+e8 if cc
-    int8_t e8 = *bus->read(pc++);
+    int8_t e8 = bus->read(pc++);
     if (cc()) {
         pc += e8;
         ((GameBoy*)gub)->tick();
@@ -293,8 +307,8 @@ void CPU::add_hl_rpp(int p) { // ADD HL, rp[p]: add value of rp[p] to HL and sto
 }
 
 void CPU::ld_rpp_nn(int p) { // LD rp[p], nn: load nn into rp[p]
-    int lsb = *bus->read(pc++);
-    int msb = *bus->read(pc++);
+    int lsb = bus->read(pc++);
+    int msb = bus->read(pc++);
     *rp[p]() = (msb << 8) + lsb;
 }
 
@@ -310,28 +324,28 @@ void CPU::inc16(int p) {
 
 void CPU::inc8(int y) {
     if (y == 6) { // INC (HL)
-            uint8_t old = *bus->read(reg.hl, true);
-            uint8_t val = old + 1;
+        uint8_t old = bus->read(reg.hl, true);
+        uint8_t val = old + 1;
 
-            reg.setFlag('z', val == 0);
-            reg.setFlag('n', 0);
-            reg.setFlag('h', (old & 0x0F) == 0x0F);
+        reg.setFlag('z', val == 0);
+        reg.setFlag('n', 0);
+        reg.setFlag('h', (old & 0x0F) == 0x0F);
 
-            bus->write(reg.hl, val, true);
-        } else { // INC r8 (BC, DE, HL, etc.)
-            uint8_t old = *r[y]();
-            uint8_t val = old + 1;
-            *r[y]() = val;
+        bus->write(reg.hl, val, true);
+    } else { // INC r8
+        uint8_t old = *r[y]();
+        uint8_t val = old + 1;
+        *r[y]() = val;
 
-            reg.setFlag('z', val == 0);
-            reg.setFlag('n', 0);
-            reg.setFlag('h', (old & 0x0F) == 0x0F);
-        }
+        reg.setFlag('z', val == 0);
+        reg.setFlag('n', 0);
+        reg.setFlag('h', (old & 0x0F) == 0x0F);
+    }
 }
 
 void CPU::dec8(int y) {
     if (y == 6) { // DEC (HL)
-            uint8_t old = *bus->read(reg.hl, true);
+            uint8_t old = bus->read(reg.hl, true);
             uint8_t val = old - 1;
 
             reg.setFlag('z', val == 0);
@@ -426,7 +440,11 @@ void CPU::ccf() { // CCF: Complement (flip) carry flag
 // alu ops
 void CPU::add_a(int z, bool use_r) { // ADD A, r8/n8: add value from (r8/n8) to A and store in A
     uint8_t a = *reg.a;
-    uint8_t r8 = use_r ? *r[z]() : *bus->read(pc++);
+    uint8_t r8;
+    if (z != 6)
+        r8 = use_r ? *r[z]() : bus->read(pc++);
+    else
+        r8 = bus->read(reg.hl);
     uint16_t sum = a + r8;
 
     *reg.a = (uint8_t)sum;
@@ -438,7 +456,11 @@ void CPU::add_a(int z, bool use_r) { // ADD A, r8/n8: add value from (r8/n8) to 
 }
 void CPU::adc_a(int z, bool use_r) { // ADC A, r8/n8: add value from carry and (r8/n8) to A and store in A
     uint16_t a = *reg.a;
-    uint16_t r8 = use_r ? *r[z]() : *bus->read(pc++);
+    uint8_t r8;
+    if (z != 6)
+        r8 = use_r ? *r[z]() : bus->read(pc++);
+    else
+        r8 = bus->read(reg.hl);
     uint16_t c = (reg.getFlag('c') ? 1 : 0);
     uint16_t sum = a + r8 + c;
 
@@ -451,7 +473,11 @@ void CPU::adc_a(int z, bool use_r) { // ADC A, r8/n8: add value from carry and (
 }
 void CPU::sub_a(int z, bool use_r) { // SUB A, r8/n8: subtract (r8/n8) from A and store in A
     uint16_t a = *reg.a;
-    uint16_t r8 = use_r ? *r[z]() : *bus->read(pc++);
+    uint8_t r8;
+    if (z != 6)
+        r8 = use_r ? *r[z]() : bus->read(pc++);
+    else
+        r8 = bus->read(reg.hl);
     uint16_t diff = a - r8;
 
     *reg.a = (uint8_t)diff;
@@ -463,7 +489,11 @@ void CPU::sub_a(int z, bool use_r) { // SUB A, r8/n8: subtract (r8/n8) from A an
 }
 void CPU::sbc_a(int z, bool use_r) { // SBC A, r8/n8: subtract (r8/n8) and carry from A and store in A
     uint16_t a = *reg.a;
-    uint16_t r8 = use_r ? *r[z]() : *bus->read(pc++);
+    uint8_t r8;
+    if (z != 6)
+        r8 = use_r ? *r[z]() : bus->read(pc++);
+    else
+        r8 = bus->read(reg.hl);
     uint16_t c = reg.getFlag('c') ? 1 : 0;
     uint16_t diff = a - r8 - c;
 
@@ -475,21 +505,36 @@ void CPU::sbc_a(int z, bool use_r) { // SBC A, r8/n8: subtract (r8/n8) and carry
     reg.setFlag('c', a < (uint16_t)r8 + c);
 }
 void CPU::and_a(int z, bool use_r) { // AND A, r8/n8: bitwise and between A and (r8/n8) and store in A
-    *reg.a = *reg.a & (use_r ? *r[z]() : *bus->read(pc++));
+    uint8_t r8;
+    if (z != 6)
+        r8 = use_r ? *r[z]() : bus->read(pc++);
+    else
+        r8 = bus->read(reg.hl);
+    *reg.a = *reg.a & r8;
     reg.setFlag('z', *reg.a == 0);
     reg.setFlag('n', 0);
     reg.setFlag('h', 1);
     reg.setFlag('c', 0);
 }
 void CPU::xor_a(int z, bool use_r) { // XOR A, r8/n8: bitwise xor between A and (r8/n8) and store in A
-    *reg.a = *reg.a ^ (use_r ? *r[z]() : *bus->read(pc++));
+    uint8_t r8;
+    if (z != 6)
+        r8 = use_r ? *r[z]() : bus->read(pc++);
+    else
+        r8 = bus->read(reg.hl);
+    *reg.a = *reg.a ^ r8;
     reg.setFlag('z', *reg.a == 0);
     reg.setFlag('n', 0);
     reg.setFlag('h', 0);
     reg.setFlag('c', 0);
 }
 void CPU::or_a(int z, bool use_r) { // OR A, r8/n8: bitwise or between A and (r8/n8) and store in A
-    *reg.a = *reg.a | (use_r ? *r[z]() : *bus->read(pc++));
+    uint8_t r8;
+    if (z != 6)
+        r8 = use_r ? *r[z]() : bus->read(pc++);
+    else
+        r8 = bus->read(reg.hl);
+    *reg.a = *reg.a | r8;
     reg.setFlag('z', *reg.a == 0);
     reg.setFlag('n', 0);
     reg.setFlag('h', 0);
@@ -497,7 +542,11 @@ void CPU::or_a(int z, bool use_r) { // OR A, r8/n8: bitwise or between A and (r8
 }
 void CPU::cp_a(int z, bool use_r) { // CP A, r8/n8: subtract (r8/n8) from A and update flags
     uint16_t a = *reg.a;
-    uint16_t r8 = use_r ? *r[z]() : *bus->read(pc++);
+    uint8_t r8;
+    if (z != 6)
+        r8 = use_r ? *r[z]() : bus->read(pc++);
+    else
+        r8 = bus->read(reg.hl);
     uint16_t diff = a - r8;
 
     reg.setFlag('z', diff == 0);
@@ -510,15 +559,15 @@ void CPU::ret_cc(std::function<bool()> cc) { // RET cc: conditional return
     ((GameBoy*)gub)->tick();
 
     if (cc()) {
-        uint8_t lsb = *bus->read(sp++);
-        uint8_t msb = *bus->read(sp++);
+        uint8_t lsb = bus->read(sp++);
+        uint8_t msb = bus->read(sp++);
         pc = ((uint16_t)msb << 8) + (uint16_t)lsb;
         ((GameBoy*)gub)->tick();
     }
 }
 
 void CPU::add_sp_e() { // ADD SP, e8: add signed 8bit offset to stack pointer
-    int8_t e8 = (int8_t)*bus->read(pc++);
+    int8_t e8 = (int8_t)bus->read(pc++);
     uint16_t _sp = sp;
     uint16_t sum = _sp + e8;
     ((GameBoy*)gub)->tick();
@@ -532,7 +581,7 @@ void CPU::add_sp_e() { // ADD SP, e8: add signed 8bit offset to stack pointer
 }
 
 void CPU::ld_hl_sp_e() { // LD HL, SP+e8: load to HL the value of e8 + sp
-    int8_t e8 = (int8_t)*bus->read(pc++);
+    int8_t e8 = (int8_t)bus->read(pc++);
     uint16_t sum = sp + e8;
 
     ((GameBoy*)gub)->tick();
@@ -545,8 +594,8 @@ void CPU::ld_hl_sp_e() { // LD HL, SP+e8: load to HL the value of e8 + sp
 }
 
 void CPU::jp_cc_n16(std::function<bool()> cc) { // JP cc, n16: conditional jump to n16
-    uint8_t lsb = *bus->read(pc++);
-    uint8_t msb = *bus->read(pc++);
+    uint8_t lsb = bus->read(pc++);
+    uint8_t msb = bus->read(pc++);
     uint16_t n16 = ((uint16_t)msb << 8) + lsb;
     if (cc()) {
         ((GameBoy*)gub)->tick();
@@ -555,8 +604,8 @@ void CPU::jp_cc_n16(std::function<bool()> cc) { // JP cc, n16: conditional jump 
 }
 
 void CPU::call_cc_nn(std::function<bool()> cc) { // CALL cc, n16: conditional function call
-    uint8_t lsb = *bus->read(pc++);
-    uint8_t msb = *bus->read(pc++);
+    uint8_t lsb = bus->read(pc++);
+    uint8_t msb = bus->read(pc++);
     uint16_t n16 = ((uint16_t)msb << 8) | lsb;
     if (cc()) {
         sp--;
@@ -568,21 +617,21 @@ void CPU::call_cc_nn(std::function<bool()> cc) { // CALL cc, n16: conditional fu
 }
 
 void CPU::call_nn() { // CALL nn: unconditional function call
-    uint8_t lsb = *bus->read(pc++);
-    uint8_t msb = *bus->read(pc++);
+    uint8_t lsb = bus->read(pc++);
+    uint8_t msb = bus->read(pc++);
     uint16_t n16 = ((uint16_t)msb << 8) | lsb;
     sp--;
-    ((GameBoy*)gub)->tick();
     bus->write(sp--, (uint8_t)(pc >> 8));
     bus->write(sp, (uint8_t)pc);
+    ((GameBoy*)gub)->tick();
     pc = n16;
 }
 
 void CPU::rst_y(int y) { // RST y*8: unconditional function call to abs fixed addr
     uint8_t n = y*8;
     sp--;
-    ((GameBoy*)gub)->tick();
     bus->write(sp--, (uint8_t)(pc >> 8));
+    ((GameBoy*)gub)->tick();
     bus->write(sp, (uint8_t)pc);
     pc = 0x0000 | n;
 }
@@ -610,80 +659,136 @@ void CPU::cb(uint8_t inst) { // $CB instruction prefix
 
 // $CB prefixed register roll/shifts or memory location tests
 void CPU::rlc(int z) { // RLC r8: rotate left circular
-    uint8_t old = *r[z]();
+    uint8_t old;
+    if (z != 6)
+        old = *r[z]();
+    else
+        old = bus->read(reg.hl);
     bool b7 = old >> 7;
     uint8_t newVal = (old << 1) | b7;
-    *r[z]() = newVal;
+    if (z != 6)
+        *r[z]() = newVal;
+    else
+        bus->write(reg.hl, newVal);
     reg.setFlag('z', newVal == 0);
     reg.setFlag('n', 0);
     reg.setFlag('h', 0);
     reg.setFlag('c', b7);
 }
 void CPU::rrc(int z) { // RRC r8: rotate right circular
-    uint8_t old = *r[z]();
+    uint8_t old;
+    if (z != 6)
+        old = *r[z]();
+    else
+        old = bus->read(reg.hl);
     bool b0 = old % 2;
     uint8_t newVal = (old >> 1) | (b0 << 7);
-    *r[z]() = newVal;
+    if (z != 6)
+        *r[z]() = newVal;
+    else
+        bus->write(reg.hl, newVal);
     reg.setFlag('z', newVal == 0);
     reg.setFlag('n', 0);
     reg.setFlag('h', 0);
     reg.setFlag('c', b0);
 }
 void CPU::rl(int z) { // RL r8: rotate left through carry
-    uint8_t old = *r[z]();
+    uint8_t old;
+    if (z != 6)
+        old = *r[z]();
+    else
+        old = bus->read(reg.hl);
     bool b7 = old >> 7;
     uint8_t newVal = (old << 1) | reg.getFlag('c');
-    *r[z]() = newVal;
+    if (z != 6)
+        *r[z]() = newVal;
+    else
+        bus->write(reg.hl, newVal);
     reg.setFlag('z', newVal == 0);
     reg.setFlag('n', 0);
     reg.setFlag('h', 0);
     reg.setFlag('c', b7);
 }
 void CPU::rr(int z) { // RR r8: rotate right through carry
-    uint8_t old = *r[z]();
+    uint8_t old;
+    if (z != 6)
+        old = *r[z]();
+    else
+        old = bus->read(reg.hl);
     bool b0 = old % 2;
     uint8_t newVal = (old >> 1) | (reg.getFlag('c') << 7);
-    *r[z]() = newVal;
+    if (z != 6)
+        *r[z]() = newVal;
+    else
+        bus->write(reg.hl, newVal);
     reg.setFlag('z', newVal == 0);
     reg.setFlag('n', 0);
     reg.setFlag('h', 0);
     reg.setFlag('c', b0);
 }
 void CPU::sla(int z) { // SLA r8: shift left arithmetic
-    uint8_t old = *r[z]();
+    uint8_t old;
+    if (z != 6)
+        old = *r[z]();
+    else
+        old = bus->read(reg.hl);
     bool b7 = old >> 7;
     uint8_t newVal = old << 1;
-    *r[z]() = newVal;
+    if (z != 6)
+        *r[z]() = newVal;
+    else
+        bus->write(reg.hl, newVal);
     reg.setFlag('z', newVal == 0);
     reg.setFlag('n', 0);
     reg.setFlag('h', 0);
     reg.setFlag('c', b7);
 }
 void CPU::sra(int z) { // SRA r8: shift right arithmetic
-    uint8_t val = *r[z]();
-    bool b0 = val & 0x01;
-    uint8_t newVal = (val >> 1) | (val & 0x80);
-    *r[z]() = newVal;
+    uint8_t old;
+    if (z != 6)
+        old = *r[z]();
+    else
+        old = bus->read(reg.hl);
+    bool b0 = old & 0x01;
+    uint8_t newVal = (old >> 1) | (old & 0x80);
+    if (z != 6)
+        *r[z]() = newVal;
+    else
+        bus->write(reg.hl, newVal);
     reg.setFlag('z', newVal == 0);
     reg.setFlag('n', 0);
     reg.setFlag('h', 0);
     reg.setFlag('c', b0);
 }
 void CPU::swap(int z) { // SWAP r8: swap high and low nibbles of r8
-    uint8_t old = *r[z]();
+    uint8_t old;
+    if (z != 6)
+        old = *r[z]();
+    else
+        old = bus->read(reg.hl);
     uint8_t lownib = old & 0x0F;
     uint8_t newVal = (old >> 4) | (lownib << 4);
-    *r[z]() = newVal;
+    if (z != 6)
+        *r[z]() = newVal;
+    else
+        bus->write(reg.hl, newVal);
     reg.setFlag('z', newVal == 0);
     reg.setFlag('n', 0);
     reg.setFlag('h', 0);
     reg.setFlag('c', 0);
 }
 void CPU::srl(int z) { // SRL r8: shift right logical
-    uint8_t old = *r[z]();
+    uint8_t old;
+    if (z != 6)
+        old = *r[z]();
+    else
+        old = bus->read(reg.hl);
     bool b0 = old % 2;
     uint8_t newVal = old >> 1;
-    *r[z]() = newVal;
+    if (z != 6)
+        *r[z]() = newVal;
+    else
+        bus->write(reg.hl, newVal);
     reg.setFlag('z', newVal == 0);
     reg.setFlag('n', 0);
     reg.setFlag('h', 0);
@@ -692,17 +797,38 @@ void CPU::srl(int z) { // SRL r8: shift right logical
 
 // $CB prefixed bit operations
 void CPU::bit(int y, int z) { // BIT y, r8: test bit y of r8
-    bool set = (*r[z]() & (1 << y)) >> y;
+    uint8_t val;
+    if (z != 6)
+        val = *r[z]();
+    else
+        val = bus->read(reg.hl);
+    bool set = (val & (1 << y)) >> y;
 
     reg.setFlag('z', !set);
     reg.setFlag('n', 0);
     reg.setFlag('h', 1);
 }
 void CPU::res(int y, int z) { // RES y, r8: reset bit y of r8 to zero
-    uint8_t newVal = *r[z]() & ~(1 << y);
-    *r[z]() = newVal;
+    uint8_t val;
+    if (z != 6)
+        val = *r[z]();
+    else
+        val = bus->read(reg.hl);
+    uint8_t newVal = val & ~(1 << y);
+    if (z != 6)
+        *r[z]() = newVal;
+    else
+        bus->write(reg.hl, newVal);
 }
 void CPU::set(int y, int z) { // SET y, r8: set bit y of r8 to 1
-    uint8_t newVal = *r[z]() | (1 << y);
-    *r[z]() = newVal;
+    uint8_t val;
+    if (z != 6)
+        val = *r[z]();
+    else
+        val = bus->read(reg.hl);
+    uint8_t newVal = val | (1 << y);
+    if (z != 6)
+        *r[z]() = newVal;
+    else
+        bus->write(reg.hl, newVal);
 }

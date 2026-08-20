@@ -38,11 +38,13 @@ class GameBoy {
         GameBoy(GBConfig gbconf, SDL_Renderer* ren);
         void cycle();
         void tick();
-        bool tima_reload_pending = false;
         uint8_t curr_inst;
-        uint16_t sysclk = 0;
+        uint16_t sysclk = 0xABC8;
         int timer_count = 0;
         int evilCounter = 0;
+
+        uint8_t* ppuMode;
+        void ppu_stat_line();
 
         SDL_Texture* texture;
 

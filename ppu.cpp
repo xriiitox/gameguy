@@ -16,21 +16,25 @@ void PPU::tick() {
             if (mode_cycles >= 80) {
                 mode = 3;
                 lx = 0;
+                update_stat_line();
                 // Pre-fill or prepare background fetcher
             }
             break;
-        case 3: // pixel transfer
+        case 3: { // pixel transfer
+            uint8_t scx = bus->read(0xFF43, false);
+            int mode3_dur = 172 + (scx % 8);
             for (int dot = 0; dot < 4; dot++) {
                 if (lx < 160) {
                     render_single_dot();
                     lx++;
                 }
             }
-            if (lx >= 160) { // enter hblank
+            if (mode_cycles >= (80 + mode3_dur)) {
                 mode = 0;
-                bus->IF |= 2; // request lcd/stat interrupt
+                update_stat_line();
             }
             break;
+        }
         case 0: // hblank period
             if (mode_cycles >= 456) {
                 mode_cycles -= 456;
@@ -38,8 +42,10 @@ void PPU::tick() {
 
                 if (bus->ly == 144) {
                     mode = 1; // enter vblank
-                    bus->IF |= 1; // req vblank int
-                } else mode = 2;
+                } else {
+                    mode = 2;
+                }
+                update_stat_line();
             }
             break;
         case 1: // vblank
@@ -48,8 +54,9 @@ void PPU::tick() {
                 bus->ly++;
                 if (bus->ly > 153) {
                     bus->ly = 0;
-                    mode = 0;
+                    mode = 2;
                 }
+                update_stat_line();
             }
             break;
     }
@@ -57,8 +64,8 @@ void PPU::tick() {
 
 void PPU::render_single_dot() {
     // tile coordinates
-    uint8_t scan_x = lx + *bus->read(0xFF43, false); // scx
-    uint8_t scan_y = bus->ly + *bus->read(0xFF42, false); // scy
+    uint8_t scan_x = lx + bus->read(0xFF43, false); // scx
+    uint8_t scan_y = bus->ly + bus->read(0xFF42, false); // scy
 
     uint8_t tile_x = scan_x / 8;
     uint8_t tile_y = scan_y / 8;
@@ -86,7 +93,7 @@ void PPU::render_single_dot() {
     uint8_t color_idx = ((byte2 >> bit) & 1) << 1 | ((byte1 >> bit) & 1);
 
     // apply palette
-    uint8_t bgp = *bus->read(0xFF47, false);
+    uint8_t bgp = bus->read(0xFF47, false);
     uint8_t final_color = (bgp >> (color_idx * 2)) & 0x03;
     int final_final_color;
     switch (final_color) {
@@ -105,4 +112,34 @@ void PPU::render_single_dot() {
     }
     framebuffer[bus->ly*160 + lx] = final_final_color;
 
+}
+
+void PPU::update_stat_line() {
+    uint8_t stat = bus->stat;
+    uint8_t lyc  = bus->lyc;
+
+    // 1. Update LYC==LY flag (Bit 2 of STAT)
+    bool lyc_match = (bus->ly == lyc);
+    if (lyc_match) {
+        stat |= (1 << 2);
+    } else {
+        stat &= ~(1 << 2);
+    }
+    // Bus write/update STAT reg bit 2...
+
+    // 2. Calculate the condition for each enable source
+    bool mode0_int = (stat & (1 << 3)) && (mode == 0);
+    bool mode1_int = (stat & (1 << 4)) && (mode == 1);
+    bool mode2_int = (stat & (1 << 5)) && (mode == 2);
+    bool lyc_int   = (stat & (1 << 6)) && lyc_match;
+
+    // 3. Combined STAT signal (OR gate)
+    bool current_stat_line = mode0_int || mode1_int || mode2_int || lyc_int;
+
+    // 4. Request interrupt on RISING EDGE (0 -> 1 transition)
+    if (current_stat_line && !stat_line) {
+        bus->IF |= (1 << 1); // Request STAT interrupt
+    }
+
+    stat_line = current_stat_line;
 }

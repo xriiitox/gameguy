@@ -8,7 +8,7 @@
 
 class Registers {
 public:
-    uint16_t af = 0x0180;
+    uint16_t af = 0x01B0;
     uint16_t bc = 0x0013;
     uint16_t de = 0x00D8;
     uint16_t hl = 0x014D;
@@ -112,7 +112,6 @@ private:
         { 3, [this]{ return this->reg.e; } },
         { 4, [this]{ return this->reg.h; } },
         { 5, [this]{ return this->reg.l; } },
-        { 6, [this]{ return this->bus->read(this->reg.hl); } }, // pointer to memory address pointed to by HL
         { 7, [this]{ return this->reg.a; } }
     };
 

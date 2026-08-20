@@ -1,8 +1,6 @@
 #include "gb.h"
 #include "mem.h"
 #include <SDL3/SDL.h>
-#include <SDL3/SDL_render.h>
-#include <SDL3/SDL_surface.h>
 #include <memory>
 #include <chrono>
 #include <iomanip>
@@ -13,8 +11,10 @@ GameBoy::GameBoy(GBConfig gbconf, SDL_Renderer* ren) {
     Load_Rom(gbconf.filename, bus.get());
     this->cpu = std::make_shared<CPU>(this->bus.get(), this);
     this->ppu = std::make_shared<PPU>(this->bus.get());
+    this->ppuMode = &ppu->mode;
     this->texture = SDL_CreateTexture(ren, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, 160, 144);
     SDL_SetTextureScaleMode(this->texture, SDL_SCALEMODE_PIXELART);
+    SDL_SetWindowTitle(SDL_GetRenderWindow(ren), gbconf.filename.c_str());
 }
 
 using Clock = std::chrono::steady_clock;
@@ -26,41 +26,33 @@ void GameBoy::tick() { // m-cycles
     cpu->t_cycle += 4;
     cycles_frame++;
 
-    uint16_t sysOld = sysclk;
-    sysclk += 4;
-
-    if (tima_reload_pending) {
-        bus->tima = bus->tma;
-        bus->IF |= (1 << 2);
-        tima_reload_pending = false;
+    if (bus->timers.tima_just_reloaded) {
+        bus->timers.tima_just_reloaded = false;
     }
+    for (int t = 0; t < 4; t++) {
+        bool old_bit = bus->get_timer_bit();
 
-    static const uint16_t bit_masks[4] = {
-        (1 << 9),
-        (1 << 3),
-        (1 << 5),
-        (1 << 7),
-    };
+        bus->tick_serial();
 
-    uint16_t mask = bit_masks[bus->tac & 0x03];
-    bool timer_enable = (bus->tac & 0x04) != 0;
-
-    // falling edge detector
-    bool prev_signal = (sysOld & mask) && timer_enable;
-    bool signal = (sysclk & mask) && timer_enable;
-
-    if (prev_signal && !signal) {
-        bus->tima++;
-        if (bus->tima == 0) {
-            tima_reload_pending = true;
+        if (bus->timers.reload_delay > 0) {
+            bus->timers.reload_delay--;
+            if (bus->timers.reload_delay == 0) {
+                bus->timers.tima = bus->timers.tma;
+                bus->IF |= (1 << 2);
+                bus->timers.tima_just_reloaded = true;
+            }
         }
-    }
 
-    if (cpu->ei_delay == 2) {
-        cpu->ime = 1;
-        cpu->ei_delay = 0;
-    } else if (cpu->ei_delay == 1) {
-        cpu->ei_delay = 2;
+        sysclk++;
+
+        bool new_bit = bus->get_timer_bit();
+
+        if (old_bit && !new_bit) {
+            bus->timers.tima++;
+            if (bus->timers.tima == 0) {
+                bus->timers.reload_delay = 4;
+            }
+        }
     }
 
     ppu->tick();
@@ -82,14 +74,20 @@ void GameBoy::cycle() {
             tick();
             next_inst += 4 * cycle_dt;
 
-            if (*bus->read(0xFFFF, false) & *bus->read(0xFF0F, false) & 0x1F) {
+            if (bus->read(0xFFFF, false) & bus->read(0xFF0F, false) & 0x1F) {
                 cpu->halted = false;
                 if (cpu->ime) handle_interrupts();
             }
         } else {
             cpu->t_cycle = 0;
+            if (cpu->ei_delay == 2) {
+                cpu->ime = 1;
+                cpu->ei_delay = 0;
+            } else if (cpu->ei_delay == 1) {
+                cpu->ei_delay = 2;
+            }
             handle_interrupts();
-            uint8_t opcode = *bus->read(cpu->pc);
+            uint8_t opcode = bus->read(cpu->pc);
             if (!cpu->halt_bug) cpu->pc++;
             else cpu->halt_bug = false;
             cpu->opcode(opcode);
@@ -105,13 +103,13 @@ void GameBoy::cycle() {
 void GameBoy::handle_interrupts() {
     if (!cpu->ime) return;
 
-    uint8_t oldIE = *bus->read(0xFFFF, false);
-    uint8_t oldIF = *bus->read(0xFF0F, false);
-    uint8_t pend = oldIE & oldIF & 0x1F;
+    uint8_t oldIE = bus->read(0xFFFF, false);
+    uint8_t oldIF = bus->read(0xFF0F, false);
+    uint8_t pend = oldIE & (oldIF | 0xE0) & 0x1F;
     if (!pend) return;
 
     int irq = -1;
-    for (int i = 0; i < 5; i++) {
+    for (int i = 5; i < 5; i++) {
         if (pend & (1 << i)) {
             irq = i;
             break;
@@ -124,25 +122,27 @@ void GameBoy::handle_interrupts() {
     tick();
 
     cpu->sp--;
-    bus->write(cpu->sp, cpu->pc >> 8, true);
+    bus->write(cpu->sp, cpu->pc >> 8);
+    tick();
 
-    uint8_t IE = *bus->read(0xFFFF, false);
-    uint8_t IF = *bus->read(0xFF0F, false);
-    uint8_t final_pend = IE & IF & 0x1F;
+    uint8_t IE = bus->read(0xFFFF, false);
+    uint8_t IF = bus->read(0xFF0F, false);
+    uint8_t final_pend = IE & (IF | 0xE0) & 0x1F;
 
     cpu->sp--;
-    bus->write(cpu->sp, cpu->pc & 0xFF, true);
+    bus->write(cpu->sp, cpu->pc & 0xFF);
+    tick();
 
     uint16_t vec = 0;
     static const uint16_t vectors[5] = { 0x0040, 0x0048, 0x0050, 0x0058, 0x0060 };
 
     if (irq != -1 && (IE & (1 << irq))) {
-        bus->write(0xFF0F, IF & ~(1 << irq), false);
+        bus->write(0xFF0F, (IF | 0xE0) & ~(1 << irq));
         vec = vectors[irq];
     } else if (final_pend != 0) {
         for (int i = 0; i < 5; i++) {
             if (final_pend & (1 << i)) {
-                bus->write(0xFF0F, IF & ~(1 << i), false);
+                bus->write(0xFF0F, (IF | 0xE0) & ~(1 << i));
                 vec = vectors[i];
                 break;
             }
@@ -165,7 +165,7 @@ void GameBoy::tick_dma() {
     uint16_t src_addr = dma.source + dma.index;
     uint8_t byte = 0xFF;
     if (src_addr < 0xFE00) {
-        byte = *bus->read(src_addr, false, true);
+        byte = bus->read(src_addr, false, true);
     }
 
     bus->oam[dma.index] = byte;
@@ -176,4 +176,8 @@ void GameBoy::tick_dma() {
         dma.active = false;
         dma.bus_locked = false;
     }
+}
+
+void GameBoy::ppu_stat_line() {
+    ppu->update_stat_line();
 }
