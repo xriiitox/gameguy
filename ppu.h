@@ -25,6 +25,8 @@ private:
     Bus* bus;
 
     uint16_t mode_cycles = 0;
+    uint8_t scx_latch = 0;
+    uint8_t mode3_dur = 0;
     uint8_t lx = 0;
     uint8_t fetch_x = 0;
     bool window_render = false;

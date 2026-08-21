@@ -35,6 +35,8 @@ void GameBoy::tick() { // m-cycles
     cpu->t_cycle += 4;
     cycles_frame++;
 
+    ppu->tick();
+
     if (bus->timers.tima_just_reloaded) {
         bus->timers.tima_just_reloaded = false;
     }
@@ -63,8 +65,6 @@ void GameBoy::tick() { // m-cycles
             }
         }
     }
-
-    ppu->tick();
 
     // oam dma
     tick_dma();

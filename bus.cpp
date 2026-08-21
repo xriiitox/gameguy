@@ -86,13 +86,13 @@ void Bus::write(uint16_t addr, uint8_t val, bool tk) {
     if (addr <= 0xFF3F) { wav_ram[addr - 0xFF30] = val; return; }
     if (addr == 0xFF40) { lcdc = val; return; }
     if (addr == 0xFF41) { // leave last few bits read only
-        stat = (stat & 0x07) | (val & 0x78);
+        stat = (stat & 0x07) | (val & 0xF8);
         ((GameBoy*)gb)->ppu_stat_line();
         return;
     }
     if (addr == 0xFF42) { scy = val; return; }
     if (addr == 0xFF43) { scx = val; return; }
-    if (addr == 0xFF44) { ly = 0; return; } // reset scanline
+    if (addr == 0xFF44) { ly = 0; ((GameBoy*)gb)->ppu_stat_line(); return; } // reset scanline
     if (addr == 0xFF45) {
         lyc = val;
         ((GameBoy*)gb)->ppu_stat_line();

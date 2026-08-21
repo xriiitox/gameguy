@@ -12,6 +12,7 @@ PPU::PPU(Bus* bus) {
 void PPU::tick() {
     // lcd disable (lcdc bit 7)
     if (!(bus->lcdc & 0x80)) {
+        bus->stat = (bus->stat & 0xFC);
         bus->ly = 0;
         mode_cycles = 0;
         mode = 0;
@@ -27,13 +28,20 @@ void PPU::tick() {
             if (mode_cycles >= 80) {
                 mode = 3;
                 lx = 0;
+                scx_latch = bus->read(0xFF43, false);
+                int mod8 = scx_latch % 8;
+                int extra_dots = 0;
+                if (mod8 >= 1 && mod8 <= 4) {
+                    extra_dots = 4;
+                } else if (mod8 >= 5 && mod8 <= 7) {
+                    extra_dots = 8;
+                }
+                mode3_dur = 172 + extra_dots;
                 update_stat_line();
                 // Pre-fill or prepare background fetcher
             }
             break;
         case 3: { // pixel transfer
-            uint8_t scx = bus->read(0xFF43, false);
-            int mode3_dur = 172 + (scx % 8);
             for (int dot = 0; dot < 4; dot++) {
                 if (lx < 160) {
                     render_single_dot();
@@ -193,28 +201,30 @@ void PPU::render_single_dot() {
             break;
     }
     framebuffer[bus->ly*160 + lx] = final_final_color;
-
 }
 
 bool oam_comp(const oam_obj &a, const oam_obj &b) {
-    return a.x_pos < b.x_pos && a.oam_ind <= b.oam_ind;
+    if (a.x_pos != b.x_pos) {
+        return a.x_pos < b.x_pos;
+    }
+    return a.oam_ind < b.oam_ind;
 }
 
 void PPU::update_stat_line() {
-    uint8_t stat = bus->stat;
     uint8_t lyc = bus->lyc;
+    bus->stat = (bus->stat & 0xFC) | (mode & 0x03);
 
     bool lyc_match = (bus->ly == lyc);
     if (lyc_match) {
-        stat |= (1 << 2);
+        bus->stat |= (1 << 2);
     } else {
-        stat &= ~(1 << 2);
+        bus->stat &= ~(1 << 2);
     }
 
-    bool mode0_int = (stat & (1 << 3)) && (mode == 0);
-    bool mode1_int = (stat & (1 << 4)) && (mode == 1);
-    bool mode2_int = (stat & (1 << 5)) && (mode == 2);
-    bool lyc_int   = (stat & (1 << 6)) && lyc_match;
+    bool mode0_int = (bus->stat & (1 << 3)) && (mode == 0);
+    bool mode1_int = (bus->stat & (1 << 4)) && (mode == 1);
+    bool mode2_int = (bus->stat & (1 << 5)) && (mode == 2);
+    bool lyc_int   = (bus->stat & (1 << 6)) && lyc_match;
 
     bool current_stat_line = mode0_int || mode1_int || mode2_int || lyc_int;
 
