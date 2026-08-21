@@ -7,14 +7,23 @@
 #include <vector>
 
 GameBoy::GameBoy(GBConfig gbconf, SDL_Renderer* ren) {
-    this->bus = std::make_shared<Bus>(this);
-    Load_Rom(gbconf.filename, bus.get());
-    this->cpu = std::make_shared<CPU>(this->bus.get(), this);
-    this->ppu = std::make_shared<PPU>(this->bus.get());
+    this->bus = new Bus(this);
+    Load_Rom(gbconf.filename, bus);
+    this->cpu = new CPU(this->bus, this);
+    this->ppu = new PPU(this->bus);
     this->ppuMode = &ppu->mode;
     this->texture = SDL_CreateTexture(ren, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, 160, 144);
     SDL_SetTextureScaleMode(this->texture, SDL_SCALEMODE_PIXELART);
     SDL_SetWindowTitle(SDL_GetRenderWindow(ren), gbconf.filename.c_str());
+}
+
+GameBoy::~GameBoy() {
+    /*
+    if (cpu) delete cpu;
+    if (ppu) delete ppu;
+    if (bus) delete bus;
+    if (texture) delete texture;
+    */
 }
 
 using Clock = std::chrono::steady_clock;
@@ -156,20 +165,35 @@ void GameBoy::tick_dma() {
     if (!dma.active) return;
     if (dma.start_delay > 0) {
         dma.start_delay--;
+        if (dma.pending_restart) {
+            dma_byte_copy();
+
+            if (dma.start_delay == 0) {
+                dma.source = dma.pending_source;
+                dma.index = 0;
+                dma.pending_restart = false;
+                bus->dma = (uint8_t)(dma.pending_source >> 8);
+            }
+            return;
+        }
+
         if (dma.start_delay == 0) {
             dma.bus_locked = true;
         }
         return;
     }
+    dma_byte_copy();
+}
 
+void GameBoy::dma_byte_copy() {
     uint16_t src_addr = dma.source + dma.index;
     uint8_t byte = 0xFF;
+
     if (src_addr < 0xFE00) {
         byte = bus->read(src_addr, false, true);
     }
 
     bus->oam[dma.index] = byte;
-
     dma.index++;
 
     if (dma.index == 160) {

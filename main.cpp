@@ -53,7 +53,7 @@ int main (int argc, char* argv[]) {
     bool quit = false;
     bool configBar = true;
 
-    std::unique_ptr<GameBoy> gb;
+    GameBoy* gb = nullptr;
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
@@ -84,7 +84,8 @@ int main (int argc, char* argv[]) {
         SDL_RenderClear(ren);
         if (gbconf.run) {
             if (gbconf.firstrun) {
-                gb = std::make_unique<GameBoy>(gbconf, ren);
+                if (gb != nullptr) delete gb;
+                gb = new GameBoy(gbconf, ren);
                 gbconf.firstrun = false;
             }
             gb->cycle();
@@ -96,6 +97,7 @@ int main (int argc, char* argv[]) {
         SDL_RenderPresent(ren);
     }
 
+    delete gb;
     ImGui_ImplSDLRenderer3_Shutdown();
     ImGui_ImplSDL3_Shutdown();
     ImGui::DestroyContext();

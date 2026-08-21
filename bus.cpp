@@ -28,6 +28,7 @@ void Bus::write(uint16_t addr, uint8_t val, bool tk) {
     if (((GameBoy*)this->gb)->dma.bus_locked) {
             uint16_t dma_src = ((GameBoy*)this->gb)->dma.source;
 
+            if (addr == 0xFF46) { write_dma(val); return; }
             if (addr >= 0xFE00 && addr <= 0xFE9F) return; // OAM locked
             if (is_external_bus(dma_src) && is_external_bus(addr)) return;
             if (is_vram_bus(dma_src) && is_vram_bus(addr)) return;
@@ -226,16 +227,20 @@ void Bus::write_tma(uint8_t val) {
 
 void Bus::write_dma(uint8_t val) {
     GameBoy* gub = (GameBoy*)gb;
-    uint16_t src = val << 8;
-    if (src >= 0xE000) {
-        src -= 0x2000; // Map 0xE000-0xFFFF down to 0xC000-0xDF00
+    gub->dma.pending_source = val << 8;
+    if (gub->dma.pending_source >= 0xE000) {
+        gub->dma.pending_source -= 0x2000; // Map 0xE000-0xFFFF down to 0xC000-0xDF00
     }
-    gub->dma.source = src;
-    gub->dma.index = 0;
-    gub->dma.start_delay = 1;
-    gub->dma.active = true;
-    gub->dma.bus_locked = false;
-    dma = val;
+    if (gub->dma.active) {
+        gub->dma.pending_restart = true;
+        gub->dma.start_delay = 1;
+    } else {
+        gub->dma.source = gub->dma.pending_source;
+        gub->dma.index = 0;
+        gub->dma.start_delay = 1;
+        gub->dma.active = true;
+        dma = val;
+    }
 }
 
 void Bus::write_sc(uint8_t val) {

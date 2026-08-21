@@ -38,7 +38,7 @@ public:
         uint8_t tma = 0;
         uint8_t tac = 0xF8;
         int reload_delay = 0;
-        bool tima_just_reloaded;
+        bool tima_just_reloaded = false;
     } timers;
 
     // audio regs

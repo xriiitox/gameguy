@@ -17,11 +17,11 @@ struct GBConfig {
 
 class GameBoy {
     private:
-        std::shared_ptr<Bus> bus;
+        Bus* bus;
 
-        std::shared_ptr<CPU> cpu;
+        CPU* cpu;
 
-        std::shared_ptr<PPU> ppu;
+        PPU* ppu;
 
         double cycle_dt = 1.0 / 4194304;
         double now_seconds();
@@ -36,6 +36,7 @@ class GameBoy {
 
     public:
         GameBoy(GBConfig gbconf, SDL_Renderer* ren);
+        ~GameBoy();
         void cycle();
         void tick();
         uint8_t curr_inst;
@@ -48,11 +49,14 @@ class GameBoy {
 
         SDL_Texture* texture;
 
+        void dma_byte_copy();
         struct DMA {
             bool active = false;
             bool bus_locked = false;
             uint16_t source = 0;
+            uint16_t pending_source = 0;
             uint8_t index = 0;
             int start_delay = 0;
+            bool pending_restart = false;
         } dma;
 };
