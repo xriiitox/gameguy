@@ -118,7 +118,7 @@ void GameBoy::handle_interrupts() {
     if (!pend) return;
 
     int irq = -1;
-    for (int i = 5; i < 5; i++) {
+    for (int i = 0; i < 5; i++) {
         if (pend & (1 << i)) {
             irq = i;
             break;
