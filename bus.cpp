@@ -4,10 +4,10 @@
 #include <algorithm>
 #include <numeric>
 
-Bus::Bus(void* gb) {
+Bus::Bus(GameBoy* gb) {
     this->gb = gb;
 
-    div = (uint8_t*)&((GameBoy*)gb)->sysclk + 1;
+    div = (uint8_t*)&gb->sysclk + 1;
 
     for (auto bank : bankx) {
         bank.fill(0);
@@ -24,9 +24,9 @@ bool is_vram_bus(uint16_t addr) {
 }
 
 void Bus::write(uint16_t addr, uint8_t val, bool tk) {
-    if (tk) ((GameBoy*)this->gb)->tick();
-    if (((GameBoy*)this->gb)->dma.bus_locked) {
-            uint16_t dma_src = ((GameBoy*)this->gb)->dma.source;
+    if (tk) gb->tick();
+    if (gb->dma.bus_locked) {
+            uint16_t dma_src = gb->dma.source;
 
             if (addr == 0xFF46) { write_dma(val); return; }
             if (addr >= 0xFE00 && addr <= 0xFE9F) return; // OAM locked
@@ -87,15 +87,15 @@ void Bus::write(uint16_t addr, uint8_t val, bool tk) {
     if (addr == 0xFF40) { lcdc = val; return; }
     if (addr == 0xFF41) { // leave last few bits read only
         stat = (stat & 0x07) | (val & 0xF8);
-        ((GameBoy*)gb)->ppu_stat_line();
+        gb->ppu_stat_line();
         return;
     }
     if (addr == 0xFF42) { scy = val; return; }
     if (addr == 0xFF43) { scx = val; return; }
-    if (addr == 0xFF44) { ly = 0; ((GameBoy*)gb)->ppu_stat_line(); return; } // reset scanline
+    if (addr == 0xFF44) { ly = 0; gb->ppu_stat_line(); return; } // reset scanline
     if (addr == 0xFF45) {
         lyc = val;
-        ((GameBoy*)gb)->ppu_stat_line();
+        gb->ppu_stat_line();
         return;
     }
     if (addr == 0xFF46) { write_dma(val); return; }
@@ -109,12 +109,12 @@ void Bus::write(uint16_t addr, uint8_t val, bool tk) {
 }
 
 uint8_t Bus::read(uint16_t addr, bool tk, bool bypass) {
-    bool isdma = ((GameBoy*)this->gb)->dma.bus_locked;
-    if (tk) ((GameBoy*)gb)->tick();
-    // if (tk && (!isdma || (addr >= 0xFF80 && addr <= 0xFFFE))) ((GameBoy*)this->gb)->tick(); // tick if read from hram during dma
+    bool isdma = gb->dma.bus_locked;
+    if (tk) gb->tick();
+    // if (tk && (!isdma || (addr >= 0xFF80 && addr <= 0xFFFE))) gb->tick(); // tick if read from hram during dma
     // only allow reads from hram or source addr during dma
     if (!bypass && isdma) {
-            uint16_t dma_src = ((GameBoy*)this->gb)->dma.source;
+            uint16_t dma_src = gb->dma.source;
 
             // OAM is always locked for CPU reads during DMA
             if (addr >= 0xFE00 && addr <= 0xFE9F) {
@@ -195,7 +195,7 @@ uint8_t Bus::read(uint16_t addr, bool tk, bool bypass) {
 void Bus::write_div() {
     bool old_bit = get_timer_bit();
 
-    ((GameBoy*)gb)->sysclk = 0;
+    gb->sysclk = 0;
 
     bool new_bit = get_timer_bit_at(0, timers.tac);
 
@@ -259,8 +259,8 @@ void Bus::tick_serial() {
         return;
     }
 
-    bool old_bit = ((((GameBoy*)gb)->sysclk-4) & (1 << 8)) != 0;
-    bool new_bit = ((((GameBoy*)gb)->sysclk) & (1 << 8)) != 0;
+    bool old_bit = ((gb->sysclk-4) & (1 << 8)) != 0;
+    bool new_bit = ((gb->sysclk) & (1 << 8)) != 0;
 
     if (old_bit && !new_bit) {
         uint8_t incoming = 1;
@@ -279,14 +279,14 @@ void Bus::tick_serial() {
 }
 
 uint8_t Bus::read_vram(uint16_t addr) {
-    if ((lcdc & 0x80) && *((GameBoy*)gb)->ppuMode == 3) {
+    if ((lcdc & 0x80) && *gb->ppuMode == 3) {
         return 0xFF;
     }
     return vram[addr - 0x8000];
 }
 
 void Bus::write_vram(uint16_t addr, uint8_t val) {
-    if ((lcdc & 0x80) && *((GameBoy*)gb)->ppuMode == 3) {
+    if ((lcdc & 0x80) && *gb->ppuMode == 3) {
         return;
     }
     vram[addr - 0x8000] = val;
@@ -294,7 +294,7 @@ void Bus::write_vram(uint16_t addr, uint8_t val) {
 
 void Bus::write_tac(uint8_t val) {
     bool old_bit = get_timer_bit();
-    bool new_bit = get_timer_bit_at(((GameBoy*)gb)->sysclk, val);
+    bool new_bit = get_timer_bit_at(gb->sysclk, val);
 
     if (old_bit && !new_bit) {
         timers.tima++;
@@ -306,7 +306,7 @@ void Bus::write_tac(uint8_t val) {
 }
 
 bool Bus::get_timer_bit() {
-    uint16_t sysclk = ((GameBoy*)gb)->sysclk;
+    uint16_t sysclk = gb->sysclk;
     if (!(timers.tac & 0x04)) return false;
 
     switch (timers.tac & 0x03) {

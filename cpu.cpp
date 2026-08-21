@@ -4,9 +4,9 @@
 #include "bus.h"
 #include "gb.h"
 
-CPU::CPU(Bus* bus, void* gb) {
+CPU::CPU(Bus* bus, GameBoy* gb) {
     this->bus = bus;
-    this->gub = gb;
+    this->gb = gb;
 }
 
 // octal decoding
@@ -16,8 +16,6 @@ void CPU::opcode(uint8_t inst) {
     int z = inst & 0x07;
     int p = y >> 1;
     int q = y % 2;
-
-    GameBoy* gb = (GameBoy*)gub;
 
     switch (x) {
         case 0:
@@ -270,7 +268,7 @@ void CPU::opcode(uint8_t inst) {
                         uint16_t val = *rp2[p]();
                         sp--;
                         bus->write(sp, (uint8_t)(val >> 8));
-                        ((GameBoy*)gub)->tick();
+                        gb->tick();
                         sp--;
                         bus->write(sp, (uint8_t)(val & 0xFF));
                     }
@@ -291,7 +289,7 @@ void CPU::jr_cc_e8(std::function<bool()> cc) { // JR cc, e8: jump to pc+e8 if cc
     int8_t e8 = bus->read(pc++);
     if (cc()) {
         pc += e8;
-        ((GameBoy*)gub)->tick();
+        gb->tick();
     }
 }
 
@@ -300,7 +298,7 @@ void CPU::add_hl_rpp(int p) { // ADD HL, rp[p]: add value of rp[p] to HL and sto
     uint16_t rpp = *rp[p]();
     uint32_t sum = hl + rpp;
     reg.hl = static_cast<uint16_t>(sum);
-    ((GameBoy*)gub)->tick();
+    gb->tick();
     reg.setFlag('n', 0);
     reg.setFlag('h', ((hl & 0x0FFF) + (rpp & 0x0FFF)) > 0x0FFF);
     reg.setFlag('c', sum > 0xFFFF);
@@ -314,12 +312,12 @@ void CPU::ld_rpp_nn(int p) { // LD rp[p], nn: load nn into rp[p]
 
 void CPU::dec16(int p) {
     (*rp[p]())--;
-    ((GameBoy*)gub)->tick();
+    gb->tick();
 }
 
 void CPU::inc16(int p) {
     (*rp[p]())++;
-    ((GameBoy*)gub)->tick();
+    gb->tick();
 }
 
 void CPU::inc8(int y) {
@@ -556,13 +554,13 @@ void CPU::cp_a(int z, bool use_r) { // CP A, r8/n8: subtract (r8/n8) from A and 
 }
 
 void CPU::ret_cc(std::function<bool()> cc) { // RET cc: conditional return
-    ((GameBoy*)gub)->tick();
+    gb->tick();
 
     if (cc()) {
         uint8_t lsb = bus->read(sp++);
         uint8_t msb = bus->read(sp++);
         pc = ((uint16_t)msb << 8) + (uint16_t)lsb;
-        ((GameBoy*)gub)->tick();
+        gb->tick();
     }
 }
 
@@ -570,10 +568,10 @@ void CPU::add_sp_e() { // ADD SP, e8: add signed 8bit offset to stack pointer
     int8_t e8 = (int8_t)bus->read(pc++);
     uint16_t _sp = sp;
     uint16_t sum = _sp + e8;
-    ((GameBoy*)gub)->tick();
+    gb->tick();
     sp = sum;
 
-    ((GameBoy*)gub)->tick();
+    gb->tick();
     reg.setFlag('z', 0);
     reg.setFlag('n', 0);
     reg.setFlag('h', ((_sp & 0x0F) + ((uint8_t)e8 & 0x0F)) > 0x0F);
@@ -584,7 +582,7 @@ void CPU::ld_hl_sp_e() { // LD HL, SP+e8: load to HL the value of e8 + sp
     int8_t e8 = (int8_t)bus->read(pc++);
     uint16_t sum = sp + e8;
 
-    ((GameBoy*)gub)->tick();
+    gb->tick();
     reg.hl = sum;
 
     reg.setFlag('z', 0);
@@ -598,7 +596,7 @@ void CPU::jp_cc_n16(std::function<bool()> cc) { // JP cc, n16: conditional jump 
     uint8_t msb = bus->read(pc++);
     uint16_t n16 = ((uint16_t)msb << 8) + lsb;
     if (cc()) {
-        ((GameBoy*)gub)->tick();
+        gb->tick();
         pc = n16;
     }
 }
@@ -611,7 +609,7 @@ void CPU::call_cc_nn(std::function<bool()> cc) { // CALL cc, n16: conditional fu
         sp--;
         bus->write(sp--, (uint8_t)(pc >> 8));
         bus->write(sp, (uint8_t)pc);
-        ((GameBoy*)gub)->tick();
+        gb->tick();
         pc = n16;
     }
 }
@@ -623,7 +621,7 @@ void CPU::call_nn() { // CALL nn: unconditional function call
     sp--;
     bus->write(sp--, (uint8_t)(pc >> 8));
     bus->write(sp, (uint8_t)pc);
-    ((GameBoy*)gub)->tick();
+    gb->tick();
     pc = n16;
 }
 
@@ -631,7 +629,7 @@ void CPU::rst_y(int y) { // RST y*8: unconditional function call to abs fixed ad
     uint8_t n = y*8;
     sp--;
     bus->write(sp--, (uint8_t)(pc >> 8));
-    ((GameBoy*)gub)->tick();
+    gb->tick();
     bus->write(sp, (uint8_t)pc);
     pc = 0x0000 | n;
 }

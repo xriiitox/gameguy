@@ -1,7 +1,8 @@
+#pragma once
 #include <cstdint>
 #include <array>
 
-#pragma once
+class GameBoy;
 
 // internal class, yay!
 class Bus {
@@ -89,9 +90,9 @@ public:
     bool get_timer_bit();
     bool get_timer_bit_at(uint16_t clk, uint8_t tac);
 
-    void* gb;
+    GameBoy* gb;
 
-    Bus(void* gb);
+    Bus(GameBoy* gb);
 private:
     void write_helper(uint16_t addr, uint8_t val);
     void write_div();

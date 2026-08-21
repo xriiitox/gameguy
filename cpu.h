@@ -6,6 +6,8 @@
 
 #pragma once
 
+class GameBoy;
+
 class Registers {
 public:
     uint16_t af = 0x01B0;
@@ -86,7 +88,7 @@ public:
 class CPU {
 private:
     Bus* bus;
-    void* gub;
+    GameBoy* gb;
 
     // instuction functions
     void jr_cc_e8(std::function<bool()> cc);
@@ -199,7 +201,7 @@ private:
     };
 public:
     Registers reg;
-    CPU(Bus* bus, void* gb);
+    CPU(Bus* bus, GameBoy* gb);
     void opcode(uint8_t inst);
     int t_cycle = 0;
     uint16_t pc = 0x0100; // program counter
