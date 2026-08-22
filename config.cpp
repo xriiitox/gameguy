@@ -9,7 +9,7 @@
 
 extern NFD::UniquePath outPath;
 
-void MakeConfigBar(SDL_Window* win, GBConfig& gbconf, std::vector<std::string> roms, nfdfilteritem_t filter) {
+void MakeConfigBar(SDL_Window* win, GBConfig& gbconf, nfdfilteritem_t filter) {
     if (ImGui::BeginMainMenuBar()) {
         if (ImGui::BeginMenu("File")) {
             if (ImGui::MenuItem("Open ROM")) {

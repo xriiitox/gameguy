@@ -39,6 +39,9 @@ class GameBoy {
         ~GameBoy();
         void cycle();
         void tick();
+        uint8_t d_pad_state = 0x0F;
+        uint8_t buttons_state = 0x0F;
+        void handle_input(SDL_Event e, bool set);
         uint8_t curr_inst;
         uint16_t sysclk = 0xABC8;
         int timer_count = 0;

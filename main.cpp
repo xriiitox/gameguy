@@ -1,18 +1,18 @@
 #include "gb.h"
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_events.h>
+#include <SDL3/SDL_oldnames.h>
+#include <SDL3/SDL_rect.h>
 #include <SDL3/SDL_render.h>
 #include <SDL3/SDL_scancode.h>
+#include <SDL3/SDL_surface.h>
 #include <SDL3/SDL_video.h>
-#include <vector>
 #include <string>
-#include <filesystem>
 #include "imgui.h"
 #include "imgui_impl_sdl3.h"
 #include "imgui_impl_sdlrenderer3.h"
 #include "config.h"
 #include <iostream>
-#include <memory>
 #include <nfd.hpp>
 #include <nfd_sdl2.h>
 
@@ -31,9 +31,10 @@ int main (int argc, char* argv[]) {
         SDL_Quit();
         return 1;
     }
-    NFD_SetDisplayPropertiesFromSDLWindow(win);
 
-    SDL_SetWindowResizable(win, false);
+    SDL_SetWindowAspectRatio(win, 160.0f/144.0f, 160.0f/144.0f);
+    SDL_SetWindowMinimumSize(win, 160, 144);
+    NFD_SetDisplayPropertiesFromSDLWindow(win);
 
     SDL_Renderer* ren = SDL_CreateRenderer(win, nullptr);
     if (ren == nullptr) {
@@ -60,11 +61,6 @@ int main (int argc, char* argv[]) {
     ImGui_ImplSDL3_InitForSDLRenderer(win, ren);
     ImGui_ImplSDLRenderer3_Init(ren);
 
-    std::vector<std::string> roms;
-    for (const auto& entry : std::filesystem::directory_iterator(".")) {
-        if (entry.path().extension() == ".gb") roms.push_back(entry.path());
-    }
-
     while (!quit) {
         while (SDL_PollEvent(&e)) {
             ImGui_ImplSDL3_ProcessEvent(&e);
@@ -72,6 +68,10 @@ int main (int argc, char* argv[]) {
                 quit = true;
             } else if (e.type == SDL_EVENT_KEY_DOWN && e.key.scancode == SDL_SCANCODE_F1 && e.key.repeat == false) {
                 configBar = !configBar;
+            } else if (e.type == SDL_EVENT_KEY_DOWN && e.key.repeat == false) {
+                if (gb != nullptr) gb->handle_input(e, true);
+            } else if (e.type == SDL_EVENT_KEY_UP && e.key.repeat == false) {
+                if (gb != nullptr) gb->handle_input(e, false);
             }
         }
 
@@ -79,9 +79,35 @@ int main (int argc, char* argv[]) {
         ImGui_ImplSDL3_NewFrame();
         ImGui::NewFrame();
         if (configBar) {
-            MakeConfigBar(win, gbconf, roms, filterItem);
+            MakeConfigBar(win, gbconf , filterItem);
         }
+        ImGui::Render();
+        SDL_SetRenderDrawColor(ren, 0x9B, 0xBC, 0x0F, 255);
         SDL_RenderClear(ren);
+        // window resizing bs
+        int width, height;
+        SDL_GetWindowSizeInPixels(win, &width, &height);
+        const float base_width = 480.0f;
+        float scale_factor = static_cast<float>(width) / base_width;
+        if (scale_factor < 0.5f) scale_factor = 0.5f;
+        ImGuiIO& io = ImGui::GetIO();
+        io.FontGlobalScale = scale_factor;
+        ImGuiStyle& style = ImGui::GetStyle();
+        style = ImGuiStyle();
+        style.ScaleAllSizes(scale_factor);
+        float target_aspect = 160.0f / 144.0f;
+        float d_width = static_cast<float>(width);
+        float d_height = d_width / target_aspect;
+        if (d_height > static_cast<float>(height)) {
+            d_height = static_cast<float>(height);
+            d_width = d_height * target_aspect;
+        }
+        SDL_FRect dst_rect;
+        dst_rect.w = d_width;
+        dst_rect.h = d_height;
+        dst_rect.x = (static_cast<float>(width) - d_width) / 2.0f;
+        dst_rect.y = (static_cast<float>(height) - d_height) / 2.0f;
+
         if (gbconf.run) {
             if (gbconf.firstrun) {
                 if (gb != nullptr) delete gb;
@@ -89,10 +115,8 @@ int main (int argc, char* argv[]) {
                 gbconf.firstrun = false;
             }
             gb->cycle();
-            SDL_RenderTexture(ren, gb->texture, nullptr, nullptr);
+            SDL_RenderTexture(ren, gb->texture, nullptr, &dst_rect);
         }
-
-        ImGui::Render();
         ImGui_ImplSDLRenderer3_RenderDrawData(ImGui::GetDrawData(), ren);
         SDL_RenderPresent(ren);
     }

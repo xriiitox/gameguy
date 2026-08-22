@@ -1,6 +1,8 @@
 #include "gb.h"
 #include "mem.h"
 #include <SDL3/SDL.h>
+#include <SDL3/SDL_keyboard.h>
+#include <SDL3/SDL_scancode.h>
 #include <memory>
 #include <chrono>
 #include <iomanip>
@@ -204,4 +206,73 @@ void GameBoy::dma_byte_copy() {
 
 void GameBoy::ppu_stat_line() {
     ppu->update_stat_line();
+}
+
+void GameBoy::handle_input(SDL_Event e, bool set) {
+    bool intr = false;
+
+    switch (e.key.scancode) {
+        case SDL_SCANCODE_UP:
+            if (!set) d_pad_state |= 0x04;
+            else {
+                d_pad_state &= ~0x04;
+                intr = true;
+            }
+            break;
+        case SDL_SCANCODE_DOWN:
+            if (!set) d_pad_state |= 0x08;
+            else {
+                d_pad_state &= ~0x08;
+                intr = true;
+            }
+            break;
+        case SDL_SCANCODE_LEFT:
+            if (!set) d_pad_state |= 0x02;
+            else {
+                d_pad_state &= ~0x02;
+                intr = true;
+            }
+            break;
+        case SDL_SCANCODE_RIGHT:
+            if (!set) d_pad_state |= 0x01;
+            else {
+                d_pad_state &= ~0x01;
+                intr = true;
+            }
+            break;
+        case SDL_SCANCODE_X:
+            if (!set) buttons_state |= 0x02;
+            else {
+                buttons_state &= ~0x02;
+                intr = true;
+            }
+            break;
+        case SDL_SCANCODE_Z:
+            if (!set) buttons_state |= 0x01;
+            else {
+                buttons_state &= ~0x01;
+                intr = true;
+            }
+            break;
+        case SDL_SCANCODE_RETURN:
+            if (!set) buttons_state |= 0x08;
+            else {
+                buttons_state &= ~0x08;
+                intr = true;
+            }
+            break;
+        case SDL_SCANCODE_RSHIFT:
+            if (!set) buttons_state |= 0x04;
+            else {
+                buttons_state &= ~0x04;
+                intr = true;
+            }
+            break;
+        default:
+            break;
+    }
+
+    if (intr) {
+        bus->IF |= (1 << 4);
+    }
 }

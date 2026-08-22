@@ -44,7 +44,7 @@ void Bus::write(uint16_t addr, uint8_t val, bool tk) {
     if (addr <= 0xFDFF) { wram2[addr - 0xF000] = val; return; } // echo ram section 2
     if (addr <= 0xFE9F) { oam[addr - 0xFE00] = val; return; } // oam
     // controller
-    if (addr == 0xFF00) { joyp = val & 0xF0; return; }
+    if (addr == 0xFF00) { joyp = (joyp & 0x0F) | (val & 0xF0); return; }
     // serial
     if (addr == 0xFF01) { serial_port.sb = val; return; }
     if (addr == 0xFF02) {
@@ -141,7 +141,21 @@ uint8_t Bus::read(uint16_t addr, bool tk, bool bypass) {
     if (addr <= 0xFDFF) return wram2[addr - 0xF000];
     if (addr <= 0xFE9F) return oam[addr - 0xFE00];
     // read io regs
-    if (addr == 0xFF00) { return joyp | 0xC0; }
+    if (addr == 0xFF00) {
+        bool d_pad = !((joyp & 0x10) >> 4);
+        bool button = !((joyp & 0x20) >> 5);
+
+        uint8_t res = 0xC0 | joyp | 0x0F;
+
+        if (d_pad) {
+            res &= (0xF0 | gb->d_pad_state);
+        }
+        if (button) {
+            res &= (0xF0 | gb->buttons_state);
+        }
+
+        return res;
+    }
     if (addr == 0xFF01) return serial_port.sb;
     if (addr == 0xFF02) { return serial_port.sc | 0x7E; }
     if (addr == 0xFF04) return *div; // pointer to upper 8 bytes of sysclk
