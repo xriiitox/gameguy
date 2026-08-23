@@ -1,6 +1,5 @@
 #include <string>
 #include <cstdint>
-#include <memory>
 #include <SDL3/SDL.h>
 #include "cpu.h"
 #include "bus.h"

@@ -1,8 +1,6 @@
 #include "bus.h"
 #include "gb.h"
 #include "mem.h"
-#include <algorithm>
-#include <numeric>
 
 Bus::Bus(GameBoy* gb) {
     this->gb = gb;

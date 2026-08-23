@@ -30,7 +30,7 @@ set_target_properties(nfd PROPERTIES
   INTERFACE_LINK_LIBRARIES "PkgConfig::DBUS;PkgConfig::WAYLAND"
 )
 
-add_executable(${PROJECT_NAME} main.cpp)
+add_executable(${PROJECT_NAME} src/main.cpp)
 
 target_include_directories(${PROJECT_NAME} PRIVATE
   ${IMGUI_PATH}
@@ -47,12 +47,12 @@ target_include_directories(imgui PUBLIC
 )
 
 target_sources(${PROJECT_NAME} PRIVATE
-  gb.cpp
-  mem.cpp
-  cpu.cpp
-  config.cpp
-  bus.cpp
-  ppu.cpp
+  src/gb.cpp
+  src/mem.cpp
+  src/cpu.cpp
+  src/config.cpp
+  src/bus.cpp
+  src/ppu.cpp
 )
 
 target_link_libraries(${PROJECT_NAME} PRIVATE

@@ -3,10 +3,7 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_keyboard.h>
 #include <SDL3/SDL_scancode.h>
-#include <memory>
 #include <chrono>
-#include <iomanip>
-#include <vector>
 
 GameBoy::GameBoy(GBConfig gbconf, SDL_Renderer* ren) {
     this->bus = new Bus(this);

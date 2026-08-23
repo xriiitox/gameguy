@@ -4,7 +4,6 @@
 #include <nfd.hpp>
 #include <nfd_sdl2.h>
 #include <SDL3/SDL.h>
-#include <vector>
 #include <string>
 
 extern NFD::UniquePath outPath;
