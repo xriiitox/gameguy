@@ -1,21 +1,15 @@
 #pragma once
 
 #include <cstdint>
-#include <array>
-#include <vector>
 
 // interface class, do not instantiate
 class Mapper {
 public:
     ~Mapper() {}
-    void switch_rom_bank();
-
-    void switch_ram_bank();
 
     virtual uint8_t read(uint16_t addr) = 0;
 
     virtual void write(uint16_t addr, uint8_t value) = 0;
-private:
     // rom size in bytes
     int rom_size;
     // Bank count including b0

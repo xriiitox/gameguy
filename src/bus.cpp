@@ -122,7 +122,6 @@ uint8_t Bus::read(uint16_t addr, bool tk, bool bypass) {
                 return 0xFF;
             }
         }
-    if (addr <= 0x3FFF) return gb->mapper->read(addr);
     if (addr <= 0x7FFF) return gb->mapper->read(addr);
     if (addr <= 0x9FFF) return read_vram(addr);
     if (addr <= 0xBFFF) return gb->mapper->read(addr);

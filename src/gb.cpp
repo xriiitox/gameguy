@@ -1,5 +1,6 @@
 #include "gb.h"
 #include "mappers/nomap.h"
+#include "mappers/mbc1.h"
 #include <SDL3/SDL.h>
 #include <filesystem>
 #include <fstream>
@@ -28,6 +29,15 @@ void GameBoy::init_mapper(std::string filename) {
     switch (map_type) {
         case 0x00:
             mapper = new NoMapper(filename);
+            break;
+        case 0x01:
+            mapper = new MBC1(filename, false, false);
+            break;
+        case 0x02:
+            mapper = new MBC1(filename, true, false);
+            break;
+        case 0x03:
+            mapper = new MBC1(filename, true, true);
             break;
         default:
             mapper = nullptr;
