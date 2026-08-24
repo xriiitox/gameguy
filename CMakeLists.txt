@@ -48,11 +48,12 @@ target_include_directories(imgui PUBLIC
 
 target_sources(${PROJECT_NAME} PRIVATE
   src/gb.cpp
-  src/mem.cpp
   src/cpu.cpp
   src/config.cpp
   src/bus.cpp
   src/ppu.cpp
+  src/mappers/nomap.cpp
+  src/mappers/mbc1.cpp
 )
 
 target_link_libraries(${PROJECT_NAME} PRIVATE

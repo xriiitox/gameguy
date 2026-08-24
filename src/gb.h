@@ -4,6 +4,7 @@
 #include "cpu.h"
 #include "bus.h"
 #include "ppu.h"
+#include "mappers/mapper.h"
 
 #pragma once
 
@@ -21,6 +22,7 @@ class GameBoy {
         CPU* cpu;
 
         PPU* ppu;
+        void init_mapper(std::string filename);
 
         double cycle_dt = 1.0 / 4194304;
         double now_seconds();
@@ -50,6 +52,7 @@ class GameBoy {
         void ppu_stat_line();
 
         SDL_Texture* texture;
+        Mapper* mapper;
 
         void dma_byte_copy();
         struct DMA {

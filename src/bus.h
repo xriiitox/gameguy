@@ -7,10 +7,7 @@ class GameBoy;
 // internal class, yay!
 class Bus {
 public:
-    uint8_t bank0[0x4000];
-    std::array<std::array<uint8_t, 0x4000>, 129> bankx; // switchable via mapper
     uint8_t vram[0x2000]; // switchable if cgb
-    uint8_t eram[0x2000]; // from game cart, switchable
     uint8_t wram1[0x1000];
     uint8_t wram2[0x1000]; // switchable if cgb
     uint8_t echoram[0xFDFF - 0xE000+1]; // mirror of $C000-$DDFF

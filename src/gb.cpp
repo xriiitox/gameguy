@@ -1,19 +1,39 @@
 #include "gb.h"
-#include "mem.h"
+#include "mappers/nomap.h"
 #include <SDL3/SDL.h>
-#include <SDL3/SDL_keyboard.h>
-#include <SDL3/SDL_scancode.h>
+#include <filesystem>
+#include <fstream>
 #include <chrono>
+#include <cstdlib>
 
 GameBoy::GameBoy(GBConfig gbconf, SDL_Renderer* ren) {
     this->bus = new Bus(this);
-    Load_Rom(gbconf.filename, bus);
     this->cpu = new CPU(this->bus, this);
     this->ppu = new PPU(this->bus);
+    init_mapper(gbconf.filename);
     this->ppuMode = &ppu->mode;
     this->texture = SDL_CreateTexture(ren, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, 160, 144);
     SDL_SetTextureScaleMode(this->texture, SDL_SCALEMODE_PIXELART);
     SDL_SetWindowTitle(SDL_GetRenderWindow(ren), gbconf.filename.c_str());
+}
+
+void GameBoy::init_mapper(std::string filename) {
+    std::filesystem::path p{filename};
+    std::vector<std::byte> buffer(0x0150);
+    std::ifstream in(filename, std::ios_base::binary);
+    in.read(reinterpret_cast<char*>(buffer.data()), 0x0150);
+    in.close();
+
+    uint8_t map_type = static_cast<uint8_t>(buffer[0x0147]);
+    switch (map_type) {
+        case 0x00:
+            mapper = new NoMapper(filename);
+            break;
+        default:
+            mapper = nullptr;
+            std::cout << "MBC not implemented" << std::endl;
+            std::exit(1);
+    }
 }
 
 GameBoy::~GameBoy() {

@@ -1,15 +1,10 @@
 #include "bus.h"
 #include "gb.h"
-#include "mem.h"
 
 Bus::Bus(GameBoy* gb) {
     this->gb = gb;
 
     div = (uint8_t*)&gb->sysclk + 1;
-
-    for (auto bank : bankx) {
-        bank.fill(0);
-    }
 }
 
 bool is_external_bus(uint16_t addr) {
@@ -31,11 +26,9 @@ void Bus::write(uint16_t addr, uint8_t val, bool tk) {
             if (is_external_bus(dma_src) && is_external_bus(addr)) return;
             if (is_vram_bus(dma_src) && is_vram_bus(addr)) return;
         }
-    if (addr <= 0x1FFF) { ram_en = val; return; } // MBC RAM enable
-    if (addr >= 0x2000 && addr <= 0x3FFF) { switch_rom_bank(val, this); return; }
-    if (addr <= 0x7FFF) return; // ROM is obviously read only
+    if (addr <= 0x7FFF) { gb->mapper->write(addr, val); return; }
     if (addr <= 0x9FFF) { write_vram(addr, val); return; } // vram
-    if (addr <= 0xBFFF) { eram[addr - 0xA000] = val; return; } // external ram
+    if (addr <= 0xBFFF) { gb->mapper->write(addr, val); return; } // external ram
     if (addr <= 0xCFFF) { wram1[addr - 0xC000] = val; return; }
     if (addr <= 0xDFFF) { wram2[addr - 0xD000] = val; return; }
     if (addr <= 0xEFFF) { wram1[addr - 0xE000] = val; return; } // echo ram section 1
@@ -129,10 +122,10 @@ uint8_t Bus::read(uint16_t addr, bool tk, bool bypass) {
                 return 0xFF;
             }
         }
-    if (addr <= 0x3FFF) return bank0[addr];
-    if (addr <= 0x7FFF) return bankx[sel_bank][addr - 0x4000];
+    if (addr <= 0x3FFF) return gb->mapper->read(addr);
+    if (addr <= 0x7FFF) return gb->mapper->read(addr);
     if (addr <= 0x9FFF) return read_vram(addr);
-    if (addr <= 0xBFFF) return eram[addr - 0xA000];
+    if (addr <= 0xBFFF) return gb->mapper->read(addr);
     if (addr <= 0xCFFF) return wram1[addr - 0xC000];
     if (addr <= 0xDFFF) return wram2[addr - 0xD000];
     if (addr <= 0xEFFF) return wram1[addr - 0xE000];
