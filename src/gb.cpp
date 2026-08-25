@@ -7,10 +7,11 @@
 #include <chrono>
 #include <cstdlib>
 
-GameBoy::GameBoy(GBConfig gbconf, SDL_Renderer* ren) {
+GameBoy::GameBoy(GBConfig& gbconf, SDL_Renderer* ren) {
+    this->gbconf = gbconf;
     this->bus = new Bus(this);
     this->cpu = new CPU(this->bus, this);
-    this->ppu = new PPU(this->bus);
+    this->ppu = new PPU(this->bus, this);
     init_mapper(gbconf.filename);
     this->ppuMode = &ppu->mode;
     this->texture = SDL_CreateTexture(ren, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, 160, 144);

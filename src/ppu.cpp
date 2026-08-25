@@ -2,9 +2,12 @@
 #include <sys/types.h>
 #include <algorithm>
 #include <vector>
+#include <map>
+#include "gb.h"
 
-PPU::PPU(Bus* bus) {
+PPU::PPU(Bus* bus, GameBoy* gub) {
     this->bus = bus;
+    gb = gub;
     // ensure framebuffer empty
     std::fill(framebuffer, framebuffer + (160*144), 0u);
 }
@@ -184,23 +187,8 @@ void PPU::render_single_dot() {
             }
         }
     }
-
-    int final_final_color;
-    switch (final_color) {
-        case 3: // darkest green
-            final_final_color = 0xFF0F380F;
-            break;
-        case 2: // dark green
-            final_final_color = 0xFF306230;
-            break;
-        case 1: // light green
-            final_final_color = 0xFF8BAC0F;
-            break;
-        case 0: // lightest green
-            final_final_color = 0xFF9BBC0F;
-            break;
-    }
-    framebuffer[bus->ly*160 + lx] = final_final_color;
+    auto huh = palettes.find(gb->gbconf.palette);
+    framebuffer[bus->ly*160 + lx] = huh->second[final_color];
 }
 
 bool oam_comp(const oam_obj &a, const oam_obj &b) {

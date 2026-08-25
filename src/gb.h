@@ -12,6 +12,7 @@ struct GBConfig {
     bool run;
     bool firstrun;
     std::string filename;
+    std::string palette;
     // gbc mode here?
 };
 
@@ -36,7 +37,9 @@ class GameBoy {
         int cycles_frame = 0;
 
     public:
-        GameBoy(GBConfig gbconf, SDL_Renderer* ren);
+        GameBoy(GBConfig& gbconf, SDL_Renderer* ren);
+        GBConfig gbconf;
+
         ~GameBoy();
         void cycle();
         void tick();

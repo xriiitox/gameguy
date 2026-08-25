@@ -25,6 +25,20 @@ void MakeConfigBar(SDL_Window* win, GBConfig& gbconf, nfdfilteritem_t filter) {
             }
             ImGui::EndMenu();
         }
+        if (ImGui::BeginMenu("Options")) {
+            if (ImGui::BeginCombo("Palette", gbconf.palette.c_str())) {
+                for (int n = 0; n < IM_ARRAYSIZE(keys); n++)
+                {
+                    bool is_selected = (gbconf.palette == keys[n]); // You can store your selection however you want, outside or inside your objects
+                    if (ImGui::Selectable(keys[n].c_str(), is_selected))
+                        gbconf.palette = keys[n];
+                    if (is_selected)
+                        ImGui::SetItemDefaultFocus();   // You may set the initial focus when opening the combo (scrolling + for keyboard navigation support)
+                }
+                ImGui::EndCombo();
+            }
+            ImGui::EndMenu();
+        }
         ImGui::EndMainMenuBar();
     }
     if (gbconf.filename != "") {

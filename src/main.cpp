@@ -18,6 +18,8 @@
 
 NFD::UniquePath outPath;
 
+using namespace std::literals::string_literals;
+
 int main (int argc, char* argv[]) {
     SDL_Init(SDL_INIT_VIDEO);
 
@@ -50,6 +52,7 @@ int main (int argc, char* argv[]) {
     gbconf.filename = "";
     gbconf.run = false;
     gbconf.firstrun = true;
+    gbconf.palette = "dmg";
 
     bool quit = false;
     bool configBar = true;
