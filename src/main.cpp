@@ -25,7 +25,7 @@ int main (int argc, char* argv[]) {
 
     NFD::Guard nfdGuard;
 
-    nfdfilteritem_t filterItem = {"Game Boy ROM", "gb"};
+    nfdfilteritem_t filterItem[] = {{"Game Boy ROM", "gb"}, {"Game Boy Color ROM", "gbc"}};
 
     SDL_Window* win = SDL_CreateWindow("game guy", 480, 432, 0);
     if (win == nullptr) {
@@ -82,7 +82,7 @@ int main (int argc, char* argv[]) {
         ImGui_ImplSDL3_NewFrame();
         ImGui::NewFrame();
         if (configBar) {
-            MakeConfigBar(win, gbconf , filterItem);
+            MakeConfigBar(win, gbconf, filterItem);
         }
         ImGui::Render();
         SDL_SetRenderDrawColor(ren, 0x9B, 0xBC, 0x0F, 255);

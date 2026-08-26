@@ -24,6 +24,7 @@ MBC1::MBC1(std::string filename, bool ram, bool battery) {
     Mapper::battery = battery;
     Mapper::bank_count = length / 0x4000;
 
+    Mapper::ram_bank_count = 0;
     switch ((uint8_t)buffer[0x0149]) {
         case 0x0:
             Mapper::ram = false;
@@ -43,9 +44,44 @@ MBC1::MBC1(std::string filename, bool ram, bool battery) {
             break;
     }
 
+    if (Mapper::ram) {
+        ram_banks.resize(Mapper::ram_bank_count * 0x2000);
+    }
+
+    std::string savename = filename.substr(0, filename.size()-3)+".sav";
+    if (std::filesystem::exists(savename) && Mapper::battery && Mapper::ram) {
+        mmap = mio::make_mmap_sink(savename, 0, mio::map_entire_file, error);
+        std::filesystem::path savepath{savename};
+        auto savelength = std::filesystem::file_size(savepath);
+        std::ifstream save(savename, std::ios_base::binary);
+        std::vector<std::byte> rambuf(savelength);
+        save.read(reinterpret_cast<char*>(rambuf.data()), savelength);
+        ram_banks.resize(savelength);
+        std::memcpy(ram_banks.data(), rambuf.data(), savelength);
+        save.close();
+
+    } else {
+        // create file
+        std::ofstream file;
+        file.open(savename, std::ios::binary | std::ios::trunc);
+        std::vector<char> emptyRam(ram_bank_count*0x2000, 0xFF);
+        file.write(emptyRam.data(), ram_bank_count*0x2000);
+        file.close();
+        mmap = mio::make_mmap_sink(savename, 0, mio::map_entire_file, error);
+    }
+    // load rom
     rom_banks.resize(length);
     std::memcpy(rom_banks.data(), buffer.data(), length);
     std::cout << bank_count << std::endl;
+}
+
+MBC1::~MBC1() {
+    if (Mapper::battery) {
+        for (int i = 0; i < ram_banks.size(); i++) {
+            mmap[i] = ram_banks[i];
+        }
+    }
+    mmap.sync(error);
 }
 
 bool MBC1::detect_multicart(const std::vector<std::byte>& rom) {
@@ -91,10 +127,9 @@ uint8_t MBC1::read(uint16_t addr) {
         if (Mapper::ram && (ram_enable & 0x0F) == 0x0A) {
             if ((mode_select & 0x01)) {
                 int sel_bank = (two_bit & 0x03);
-                return ram_banks[sel_bank % Mapper::ram_bank_count][addr - 0xA000];
-            } else return ram_banks[0][addr - 0xA000];
+                return ram_banks[(sel_bank % Mapper::ram_bank_count)*0x2000 + addr - 0xA000];
+            } else return ram_banks[addr - 0xA000];
         }
-        else return 0xFF; // cartridge does not have eram
     }
     return 0xFF;
 }
@@ -117,9 +152,8 @@ void MBC1::write(uint16_t addr, uint8_t val) {
         if (Mapper::ram) {
             if ((ram_enable & 0x0F) == 0x0A) {
                 int sel_bank = (mode_select & 1) ? (two_bit & 0x03) : 0;
-                ram_banks[sel_bank % Mapper::ram_bank_count][addr - 0xA000] = val;
+                ram_banks[(sel_bank % Mapper::ram_bank_count)*0x2000 + addr - 0xA000] = val;
             }
-            return;
         }
     }
     return;

@@ -5,7 +5,7 @@
 // interface class, do not instantiate
 class Mapper {
 public:
-    ~Mapper() {}
+    virtual ~Mapper() {};
 
     virtual uint8_t read(uint16_t addr) = 0;
 
@@ -18,7 +18,7 @@ public:
     // Cart has ram banks?
     bool ram;
     // if so, how many
-    uint8_t ram_bank_count;
+    uint8_t ram_bank_count = 0;
 
     bool rtc;
     // is eRAM battery backed?

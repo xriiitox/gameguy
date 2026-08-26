@@ -8,7 +8,7 @@
 
 extern NFD::UniquePath outPath;
 
-void MakeConfigBar(SDL_Window* win, GBConfig& gbconf, nfdfilteritem_t filter) {
+void MakeConfigBar(SDL_Window* win, GBConfig& gbconf, nfdfilteritem_t* filter) {
     if (ImGui::BeginMainMenuBar()) {
         if (ImGui::BeginMenu("File")) {
             if (ImGui::MenuItem("Open ROM")) {
@@ -17,7 +17,7 @@ void MakeConfigBar(SDL_Window* win, GBConfig& gbconf, nfdfilteritem_t filter) {
                 gbconf.firstrun = true;
                 nfdwindowhandle_t window;
                 NFD_GetNativeWindowFromSDLWindow(win, &window);
-                nfdresult_t result = NFD::OpenDialog(outPath, &filter, 1, nullptr, window);
+                nfdresult_t result = NFD::OpenDialog(outPath, filter, 2, nullptr, window);
                 if (result == NFD_OKAY) {
                     gbconf.filename = outPath.get();
                     std::cout << gbconf.filename << std::endl;

@@ -48,12 +48,10 @@ void GameBoy::init_mapper(std::string filename) {
 }
 
 GameBoy::~GameBoy() {
-    /*
+    if (mapper) delete mapper;
     if (cpu) delete cpu;
     if (ppu) delete ppu;
     if (bus) delete bus;
-    if (texture) delete texture;
-    */
 }
 
 using Clock = std::chrono::steady_clock;

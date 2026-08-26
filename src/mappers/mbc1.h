@@ -1,12 +1,15 @@
 #pragma once
 #include "mapper.h"
 #include <string>
+#include <system_error>
 #include <array>
 #include <vector>
+#include "../mio.hpp"
 
 class MBC1 : public Mapper {
 public:
     MBC1(std::string filename, bool ram, bool battery);
+    ~MBC1();
     virtual uint8_t read(uint16_t addr);
     virtual void write(uint16_t addr, uint8_t val);
 private:
@@ -19,7 +22,11 @@ private:
     bool detect_multicart(const std::vector<std::byte>& rom);
     bool mbc1mm = false;
 
+    mio::mmap_sink mmap;
+    std::error_code error;
+
     uint8_t rom_helper(size_t bank, uint16_t offset);
     std::vector<uint8_t> rom_banks;
-    std::array<std::array<uint8_t, 0x2000>, 16> ram_banks;
+
+    std::vector<uint8_t> ram_banks;
 };

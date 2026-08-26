@@ -5,7 +5,7 @@
 
 struct GBConfig;
 
-void MakeConfigBar(SDL_Window* win, GBConfig& gbconf, nfdfilteritem_t filter);
+void MakeConfigBar(SDL_Window* win, GBConfig& gbconf, nfdfilteritem_t* filter);
 
 const std::string keys[2] = {
     "dmg", "mgb"
