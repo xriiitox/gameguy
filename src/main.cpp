@@ -85,7 +85,7 @@ int main (int argc, char* argv[]) {
             MakeConfigBar(win, gbconf, filterItem);
         }
         ImGui::Render();
-        SDL_SetRenderDrawColor(ren, 0x9B, 0xBC, 0x0F, 255);
+        SDL_SetRenderDrawColor(ren, 0x00, 0x00, 0x00, 255);
         SDL_RenderClear(ren);
         // window resizing bs
         int width, height;

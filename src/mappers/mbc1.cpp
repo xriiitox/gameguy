@@ -48,7 +48,14 @@ MBC1::MBC1(std::string filename, bool ram, bool battery) {
         ram_banks.resize(Mapper::ram_bank_count * 0x2000);
     }
 
-    std::string savename = filename.substr(0, filename.size()-3)+".sav";
+    std::string ext = p.extension();
+    int extnum;
+    if (ext == "gb") {
+        extnum = 3;
+    } else {
+        extnum = 4; // gbc filename
+    }
+    std::string savename = filename.substr(0, filename.size()-extnum)+".sav";
     if (std::filesystem::exists(savename) && Mapper::battery && Mapper::ram) {
         mmap = mio::make_mmap_sink(savename, 0, mio::map_entire_file, error);
         std::filesystem::path savepath{savename};
