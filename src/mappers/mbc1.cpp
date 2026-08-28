@@ -48,7 +48,7 @@ MBC1::MBC1(std::string filename, bool ram, bool battery) {
         ram_banks.resize(Mapper::ram_bank_count * 0x2000);
     }
 
-    std::string ext = p.extension();
+    std::string ext = p.extension().string();
     int extnum;
     if (ext == "gb") {
         extnum = 3;
