@@ -5,6 +5,7 @@
 #include <fstream>
 #include <vector>
 #include <cstring>
+#include <array>
 #include <algorithm>
 
 MBC1::MBC1(std::string filename, bool ram, bool battery) {
@@ -51,9 +52,9 @@ MBC1::MBC1(std::string filename, bool ram, bool battery) {
     std::string ext = p.extension().string();
     int extnum;
     if (ext == "gb") {
-        extnum = 3;
+        extnum = 2;
     } else {
-        extnum = 4; // gbc filename
+        extnum = 3; // gbc filename
     }
     std::string savename = filename.substr(0, filename.size()-extnum)+".sav";
     if (std::filesystem::exists(savename) && Mapper::battery && Mapper::ram) {
@@ -79,7 +80,6 @@ MBC1::MBC1(std::string filename, bool ram, bool battery) {
     // load rom
     rom_banks.resize(length);
     std::memcpy(rom_banks.data(), buffer.data(), length);
-    std::cout << bank_count << std::endl;
 }
 
 MBC1::~MBC1() {
@@ -87,8 +87,8 @@ MBC1::~MBC1() {
         for (int i = 0; i < ram_banks.size(); i++) {
             mmap[i] = ram_banks[i];
         }
+        mmap.sync(error);
     }
-    mmap.sync(error);
 }
 
 bool MBC1::detect_multicart(const std::vector<std::byte>& rom) {

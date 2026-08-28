@@ -33,6 +33,7 @@ target_sources(${PROJECT_NAME} PRIVATE
   src/ppu.cpp
   src/mappers/nomap.cpp
   src/mappers/mbc1.cpp
+  src/mappers/mbc2.cpp
 )
 
 include(FetchContent)

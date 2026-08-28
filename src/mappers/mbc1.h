@@ -2,7 +2,6 @@
 #include "mapper.h"
 #include <string>
 #include <system_error>
-#include <array>
 #include <vector>
 #include "../mio.hpp"
 
