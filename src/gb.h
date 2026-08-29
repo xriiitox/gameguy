@@ -35,6 +35,7 @@ class GameBoy {
         static int get_interrupt_mask(int IF, int IE);
 
         int cycles_frame = 0;
+        int cycles_second = 0;
 
     public:
         GameBoy(GBConfig& gbconf, SDL_Renderer* ren);

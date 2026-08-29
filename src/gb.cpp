@@ -1,7 +1,5 @@
 #include "gb.h"
-#include "mappers/nomap.h"
-#include "mappers/mbc1.h"
-#include "mappers/mbc2.h"
+#include "mappers/mbcs.h"
 #include <SDL3/SDL.h>
 #include <filesystem>
 #include <fstream>
@@ -28,6 +26,7 @@ void GameBoy::init_mapper(std::string filename) {
     in.close();
 
     uint8_t map_type = static_cast<uint8_t>(buffer[0x0147]);
+    std::cout << std::hex << (int)map_type << std::endl;
     switch (map_type) {
         case 0x00:
             mapper = new NoMapper(filename);
@@ -46,6 +45,21 @@ void GameBoy::init_mapper(std::string filename) {
             break;
         case 0x06:
             mapper = new MBC2(filename, true);
+            break;
+        case 0x0F:
+            mapper = new MBC3(filename, true, false, true);
+            break;
+        case 0x10:
+            mapper = new MBC3(filename, true, true, true);
+            break;
+        case 0x11:
+            mapper = new MBC3(filename, false, false, false);
+            break;
+        case 0x12:
+            mapper = new MBC3(filename, false, true, false);
+            break;
+        case 0x13:
+            mapper = new MBC3(filename, false, true, true);
             break;
         default:
             mapper = nullptr;
@@ -67,8 +81,17 @@ double GameBoy::now_seconds() {
 }
 
 void GameBoy::tick() { // m-cycles
+    static const int MCYCLES_PER_SECOND = 1048576;
     cpu->t_cycle += 4;
     cycles_frame++;
+
+    cycles_second++;
+    if (typeid(mapper) == typeid(MBC3) && cycles_second >= MCYCLES_PER_SECOND) {
+        if (mapper->rtc) {
+            reinterpret_cast<MBC3*>(mapper)->tick_rtc();
+            cycles_second = 0;
+        }
+    }
 
     ppu->tick();
 
@@ -140,6 +163,7 @@ void GameBoy::cycle() {
     }
     if (cycles_frame >= MCYCLES_PER_FRAME) {
         SDL_UpdateTexture(texture, nullptr, ppu->framebuffer, 160*sizeof(uint32_t));
+        cycles_frame = 0;
     }
 
 }

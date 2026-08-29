@@ -68,7 +68,7 @@ MBC1::MBC1(std::string filename, bool ram, bool battery) {
         std::memcpy(ram_banks.data(), rambuf.data(), savelength);
         save.close();
 
-    } else {
+    } else if (Mapper::battery && Mapper::ram) {
         // create file
         std::ofstream file;
         file.open(savename, std::ios::binary | std::ios::trunc);
