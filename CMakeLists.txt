@@ -35,6 +35,7 @@ target_sources(${PROJECT_NAME} PRIVATE
   src/mappers/mbc1.cpp
   src/mappers/mbc2.cpp
   src/mappers/mbc3.cpp
+  src/mappers/mbc5.cpp
 )
 
 include(FetchContent)

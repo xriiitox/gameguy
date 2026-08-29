@@ -61,6 +61,15 @@ void GameBoy::init_mapper(std::string filename) {
         case 0x13:
             mapper = new MBC3(filename, false, true, true);
             break;
+        case 0x19:
+            mapper = new MBC5(filename, false, false);
+            break;
+        case 0x1A:
+            mapper = new MBC5(filename, true, false);
+            break;
+        case 0x1B:
+            mapper = new MBC5(filename, true, true);
+            break;
         default:
             mapper = nullptr;
             std::cout << "MBC not implemented" << std::endl;
