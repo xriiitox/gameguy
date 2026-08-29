@@ -12,6 +12,7 @@ public:
     ~MBC2();
     virtual uint8_t read(uint16_t addr);
     virtual void write(uint16_t addr, uint8_t val);
+    virtual void tick_rtc() {};
 private:
     // cart reg: rom/ram select/enable
     uint8_t rom_sel = 1;

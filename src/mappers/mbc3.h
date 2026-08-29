@@ -29,6 +29,10 @@ private:
     std::vector<uint8_t> ram_banks;
 
     std::array<uint32_t, 5> rtc_regs;
-    int latch = 0;
+    int latch = 0xFF;
     std::array<uint32_t, 5> latched_regs;
+
+    void increment_minutes();
+    void increment_hours();
+    void increment_days();
 };

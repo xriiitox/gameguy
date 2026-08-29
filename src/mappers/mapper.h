@@ -10,6 +10,8 @@ public:
     virtual uint8_t read(uint16_t addr) = 0;
 
     virtual void write(uint16_t addr, uint8_t value) = 0;
+
+    virtual void tick_rtc() = 0;
     // rom size in bytes
     int rom_size;
     // Bank count including b0
@@ -19,6 +21,8 @@ public:
     bool ram;
     // if so, how many
     uint8_t ram_bank_count = 0;
+
+    int cycles_second = 0;
 
     bool rtc;
     // is eRAM battery backed?

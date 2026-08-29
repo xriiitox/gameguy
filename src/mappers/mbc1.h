@@ -11,6 +11,7 @@ public:
     ~MBC1();
     virtual uint8_t read(uint16_t addr);
     virtual void write(uint16_t addr, uint8_t val);
+    virtual void tick_rtc() {};
 private:
     // cart regs
     uint8_t ram_enable = 0; // addrs 0x0000-0x1FFF

@@ -3,6 +3,7 @@
 #include <fstream>
 #include <cstring>
 #include <chrono>
+#include <iostream>
 
 MBC3::MBC3(std::string filename, bool timer, bool ram, bool battery) {
     std::filesystem::path p{filename};
@@ -81,7 +82,7 @@ MBC3::MBC3(std::string filename, bool timer, bool ram, bool battery) {
         save.close();
 
 
-    } else if (Mapper::battery && Mapper::ram) {
+    } else if (Mapper::battery && (Mapper::ram || Mapper::rtc)) {
         // create file
         std::ofstream file;
         file.open(savename, std::ios::binary | std::ios::trunc);
@@ -101,44 +102,71 @@ MBC3::~MBC3() {
         for (int i = 0; i < ram_banks.size(); i++) {
             mmap[i] = ram_banks[i];
         }
-        if (Mapper::rtc) {
-            for (int i = 0; i < 5; i++) {
-                mmap[ram_banks.size()+i] = rtc_regs[i];
-            }
-            for (int i = 0; i < 5; i++) {
-                mmap[ram_banks.size()+5+i] = latched_regs[i];
-            }
-            long now_seconds = std::chrono::duration_cast<std::chrono::seconds>(
-                std::chrono::system_clock::now().time_since_epoch()).count();
-            for (int i = 0; i < 8; i++) {
-                // write bytes of current time to save file and reload later
-                mmap[ram_banks.size()+10+i] = (now_seconds & (0xFF << i)) >> i;
-            }
-        }
         mmap.sync(error);
+    }
+    if (Mapper::battery && Mapper::rtc) {
+        for (int i = 0; i < 5; i++) {
+            mmap[ram_banks.size()+i] = rtc_regs[i];
+        }
+        for (int i = 0; i < 5; i++) {
+            mmap[ram_banks.size()+5+i] = latched_regs[i];
+        }
+        long now_seconds = std::chrono::duration_cast<std::chrono::seconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
+        for (int i = 0; i < 8; i++) {
+            // write bytes of current time to save file and reload later
+            mmap[ram_banks.size()+10+i] = (now_seconds & (0xFF << i)) >> i;
+        }
     }
 }
 
 void MBC3::tick_rtc() {
-    rtc_regs[0]++;
-    if (rtc_regs[0] == 60) { // second overflow
-        rtc_regs[1]++;
+    static const int MCYCLES_PER_SECOND = 1048576;
+
+    if ((rtc_regs[4] & 0x40) != 0) return;
+    cycles_second++;
+    if (!(cycles_second >= MCYCLES_PER_SECOND)) return;
+
+    cycles_second = 0;
+
+    if (rtc_regs[0] == 59) {
         rtc_regs[0] = 0;
+        increment_minutes();
+    } else {
+        rtc_regs[0] = (rtc_regs[0] + 1) & 0x3F;
     }
-    if (rtc_regs[1] == 60) { // minute overflow
-        rtc_regs[2]++;
+}
+
+void MBC3::increment_minutes() {
+    if (rtc_regs[1] == 59) {
         rtc_regs[1] = 0;
+        increment_hours();
+    } else {
+        rtc_regs[1] = (rtc_regs[1] + 1) & 0x3F;
     }
-    if (rtc_regs[2] == 24) { // hour overflow
-        rtc_regs[3]++;
+}
+
+void MBC3::increment_hours() {
+    if (rtc_regs[2] == 23) {
         rtc_regs[2] = 0;
-        if (rtc_regs[3] == 0) { // lower byte of day counter overflow
-            if ((rtc_regs[4] & 1) != 0) { // day counter msb overflow
-                rtc_regs[4] &= ~1;
-                rtc_regs[4] |= (1 << 7);
-            } else rtc_regs[4] |= 1;
-        }
+        increment_days();
+    } else {
+        rtc_regs[2] = (rtc_regs[2] + 1) & 0x1F;
     }
+}
+
+void MBC3::increment_days() {
+    uint16_t days = rtc_regs[3] | ((rtc_regs[4] & 0x01) << 8);
+    days++;
+
+    if (days > 0x1FF) {
+        days &= 0x1FF;
+        rtc_regs[4] |= (1 << 7);
+    }
+
+    rtc_regs[3] = days & 0xFF;
+
+    rtc_regs[4] = (rtc_regs[4] & ~0x01) | ((days >> 8) & 0x01);
 }
 
 uint8_t MBC3::read(uint16_t addr) {
@@ -150,7 +178,7 @@ uint8_t MBC3::read(uint16_t addr) {
         return rom_helper(rom_select & 0x7F, addr - 0x4000);
     }
     if (addr >= 0xA000 && addr <= 0xBFFF) {
-        if (ram_timer_en == 0x0A) {
+        if ((ram_timer_en & 0x0F) == 0x0A) {
             if (ram_rtc_sel >= 0 && ram_rtc_sel <= 7) {
                 return ram_banks[(ram_rtc_sel % Mapper::ram_bank_count)*0x2000 + addr - 0xA000];
             } else if (ram_rtc_sel >= 8 && ram_rtc_sel <= 0x0C) {
@@ -169,7 +197,7 @@ uint8_t MBC3::rom_helper(size_t bank, uint16_t offset) {
 
 void MBC3::write(uint16_t addr, uint8_t val) {
     if (addr >= 0 && addr <= 0x1FFF) {
-        ram_timer_en = val;
+        ram_timer_en = val & 0x0F;
         return;
     }
     if (addr >= 0x2000 && addr <= 0x3FFF) {
@@ -189,13 +217,28 @@ void MBC3::write(uint16_t addr, uint8_t val) {
         latch = val;
     }
     if (addr >= 0xA000 && addr <= 0xBFFF) {
-        if (ram_timer_en == 0x0A) {
+        if ((ram_timer_en & 0x0F) == 0x0A) {
             if (ram_rtc_sel >= 0 && ram_rtc_sel <= 7) {
                 ram_banks[(ram_rtc_sel % Mapper::ram_bank_count)*0x2000 + addr - 0xA000] = val;
                 return;
             }
             if (ram_rtc_sel >= 8 && ram_rtc_sel <= 0xC) {
-                rtc_regs[ram_rtc_sel - 8] = val;
+                switch (ram_rtc_sel) {
+                    case 0x08:
+                        Mapper::cycles_second = 0;
+                    case 0x09:
+                        rtc_regs[ram_rtc_sel - 8] = val & 0x3F;
+                        break;
+                    case 0x0A:
+                        rtc_regs[ram_rtc_sel - 8] = val & 0x1F;
+                        break;
+                    case 0x0B:
+                        rtc_regs[ram_rtc_sel - 8] = val;
+                        break;
+                    case 0x0C:
+                        rtc_regs[ram_rtc_sel - 8] = val & 0xC1;
+                        break;
+                }
                 return;
             }
         }

@@ -81,17 +81,10 @@ double GameBoy::now_seconds() {
 }
 
 void GameBoy::tick() { // m-cycles
-    static const int MCYCLES_PER_SECOND = 1048576;
     cpu->t_cycle += 4;
     cycles_frame++;
 
-    cycles_second++;
-    if (typeid(mapper) == typeid(MBC3) && cycles_second >= MCYCLES_PER_SECOND) {
-        if (mapper->rtc) {
-            reinterpret_cast<MBC3*>(mapper)->tick_rtc();
-            cycles_second = 0;
-        }
-    }
+    mapper->tick_rtc();
 
     ppu->tick();
 

@@ -10,6 +10,7 @@ public:
 
     virtual void write(uint16_t addr, uint8_t val);
 
+    virtual void tick_rtc() {};
 private:
     uint8_t rom[0x8000];
     uint8_t eram[0x2000]; // optional 8kb cartridge ram
