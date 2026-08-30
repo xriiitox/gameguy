@@ -105,6 +105,8 @@ void GameBoy::tick() { // m-cycles
 
         bus->tick_serial();
 
+        sysclk++;
+
         if (bus->timers.reload_delay > 0) {
             bus->timers.reload_delay--;
             if (bus->timers.reload_delay == 0) {
@@ -113,8 +115,6 @@ void GameBoy::tick() { // m-cycles
                 bus->timers.tima_just_reloaded = true;
             }
         }
-
-        sysclk++;
 
         bool new_bit = bus->get_timer_bit();
 
@@ -141,13 +141,14 @@ void GameBoy::cycle() {
     while (t >= next_inst) {
         if (cpu->halted) {
             tick();
-            next_inst += 4 * cycle_dt;
 
             if (bus->read(0xFFFF, false) & bus->read(0xFF0F, false) & 0x1F) {
                 cpu->halted = false;
-                if (cpu->ime) handle_interrupts();
+                if (!cpu->ime) goto cycle;
             }
+            next_inst += 4 * cycle_dt;
         } else {
+        cycle:
             cpu->t_cycle = 0;
             if (cpu->ei_delay == 2) {
                 cpu->ime = 1;
@@ -192,7 +193,7 @@ void GameBoy::handle_interrupts() {
     tick();
 
     cpu->sp--;
-    bus->write(cpu->sp, cpu->pc >> 8);
+    bus->write(cpu->sp, cpu->pc >> 8, false);
     tick();
 
     uint8_t IE = bus->read(0xFFFF, false);
@@ -200,19 +201,19 @@ void GameBoy::handle_interrupts() {
     uint8_t final_pend = IE & (IF | 0xE0) & 0x1F;
 
     cpu->sp--;
-    bus->write(cpu->sp, cpu->pc & 0xFF);
+    bus->write(cpu->sp, cpu->pc & 0xFF, false);
     tick();
 
     uint16_t vec = 0;
     static const uint16_t vectors[5] = { 0x0040, 0x0048, 0x0050, 0x0058, 0x0060 };
 
     if (irq != -1 && (IE & (1 << irq))) {
-        bus->write(0xFF0F, (IF | 0xE0) & ~(1 << irq));
+        bus->write(0xFF0F, (IF | 0xE0) & ~(1 << irq), false);
         vec = vectors[irq];
     } else if (final_pend != 0) {
         for (int i = 0; i < 5; i++) {
             if (final_pend & (1 << i)) {
-                bus->write(0xFF0F, (IF | 0xE0) & ~(1 << i));
+                bus->write(0xFF0F, (IF | 0xE0) & ~(1 << i), false);
                 vec = vectors[i];
                 break;
             }

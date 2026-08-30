@@ -30,7 +30,6 @@ class GameBoy {
         double t = now_seconds();
         double next_inst = t;
 
-        void handle_interrupts();
         void tick_dma();
         static int get_interrupt_mask(int IF, int IE);
 
@@ -39,6 +38,8 @@ class GameBoy {
     public:
         GameBoy(GBConfig& gbconf, SDL_Renderer* ren);
         GBConfig gbconf;
+
+        void handle_interrupts();
 
         ~GameBoy();
         void cycle();

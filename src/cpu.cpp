@@ -118,7 +118,7 @@ void CPU::opcode(uint8_t inst) {
         case 1: // 8bit loading (LD r8, r8)
             if (z == 6 && y == 6) { // HALT: halt system clock
                 bool pending = (bus->ie & (bus->IF | 0xE0) & 0x1F) != 0;
-                if (ime == 0 && pending) { halt_bug = true; break;}
+                if (ime == 0 && pending) { halt_bug = true; halted = false; break;}
                 else if (ime != 0 && pending) { halted = false; break; }
                 halted = true;
                 break;

@@ -211,4 +211,5 @@ public:
     uint16_t sp = 0xFFFE; // stack pointer
     bool halted = false;
     bool halt_bug = false;
+    bool interrupt_pending = false;
 };

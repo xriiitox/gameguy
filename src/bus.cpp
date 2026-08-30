@@ -105,23 +105,23 @@ uint8_t Bus::read(uint16_t addr, bool tk, bool bypass) {
     // if (tk && (!isdma || (addr >= 0xFF80 && addr <= 0xFFFE))) gb->tick(); // tick if read from hram during dma
     // only allow reads from hram or source addr during dma
     if (!bypass && isdma) {
-            uint16_t dma_src = gb->dma.source;
+        uint16_t dma_src = gb->dma.source;
 
-            // OAM is always locked for CPU reads during DMA
-            if (addr >= 0xFE00 && addr <= 0xFE9F) {
-                return 0xFF;
-            }
-
-            // Check for conflict on External Bus
-            if (is_external_bus(dma_src) && is_external_bus(addr)) {
-                return 0xFF;
-            }
-
-            // Check for conflict on VRAM Bus
-            if (is_vram_bus(dma_src) && is_vram_bus(addr)) {
-                return 0xFF;
-            }
+        // OAM is always locked for CPU reads during DMA
+        if (addr >= 0xFE00 && addr <= 0xFE9F) {
+            return 0xFF;
         }
+
+        // Check for conflict on External Bus
+        if (is_external_bus(dma_src) && is_external_bus(addr)) {
+            return 0xFF;
+        }
+
+        // Check for conflict on VRAM Bus
+        if (is_vram_bus(dma_src) && is_vram_bus(addr)) {
+            return 0xFF;
+        }
+    }
     if (addr <= 0x7FFF) return gb->mapper->read(addr);
     if (addr <= 0x9FFF) return read_vram(addr);
     if (addr <= 0xBFFF) return gb->mapper->read(addr);
@@ -206,7 +206,9 @@ void Bus::write_div() {
     if (old_bit && !new_bit) {
         timers.tima++;
         if (timers.tima == 0) {
-            timers.reload_delay = 4;
+            timers.tima = timers.tma;
+            IF |= (1 << 2);
+            timers.tima_just_reloaded = true;
         }
     }
 
@@ -298,15 +300,17 @@ void Bus::write_vram(uint16_t addr, uint8_t val) {
 
 void Bus::write_tac(uint8_t val) {
     bool old_bit = get_timer_bit();
-    bool new_bit = get_timer_bit_at(gb->sysclk, val);
+    timers.tac = val;
+    bool new_bit = get_timer_bit();
 
     if (old_bit && !new_bit) {
         timers.tima++;
         if (timers.tima == 0) {
-            timers.reload_delay = 4;
+            timers.tima = timers.tma;
+            IF |= (1 << 2);
+            timers.tima_just_reloaded = true;
         }
     }
-    timers.tac = val;
 }
 
 bool Bus::get_timer_bit() {

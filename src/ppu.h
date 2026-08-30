@@ -43,6 +43,7 @@ private:
     uint8_t fetch_x = 0;
     bool window_render = false;
     int window_counter = 0;
+    bool lcd_was_off = false;
 
 
     uint8_t bg_fifo_color[8];
