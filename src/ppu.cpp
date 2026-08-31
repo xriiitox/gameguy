@@ -14,7 +14,7 @@ PPU::PPU(Bus* bus, GameBoy* gub) {
 
 void PPU::tick() {
     if (!(bus->lcdc & 0x80)) {
-        bus->stat = (bus->stat & 0xFC);
+        bus->stat &= 0xFC;
         bus->ly = 0;
         mode_cycles = 0;
         mode = 0;
@@ -29,7 +29,13 @@ void PPU::tick() {
         mode = 2;
         mode_cycles = 0;
         bus->ly = 0;
-        update_stat_line();
+        if (bus->ly == bus->lyc) {
+            bus->stat |= (1 << 2);
+        } else {
+            bus->stat &= ~(1 << 2);
+        }
+
+        // update_stat_line();
         return;
     }
 
@@ -209,11 +215,10 @@ bool oam_comp(const oam_obj &a, const oam_obj &b) {
 }
 
 void PPU::update_stat_line() {
-    uint8_t lyc = bus->lyc;
-
+    if (!(bus->lcdc & 0x80)) return;
     bus->stat = (bus->stat & 0xFC) | (mode & 0x03);
 
-    bool lyc_match = (bus->ly == lyc);
+    bool lyc_match = (bus->ly == bus->lyc);
     if (lyc_match) {
         bus->stat |= (1 << 2);
     } else {

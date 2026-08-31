@@ -11,6 +11,7 @@ GameBoy::GameBoy(GBConfig& gbconf, SDL_Renderer* ren) {
     this->bus = new Bus(this);
     this->cpu = new CPU(this->bus, this);
     this->ppu = new PPU(this->bus, this);
+    this->apu = new APU();
     init_mapper(gbconf.filename);
     this->ppuMode = &ppu->mode;
     this->texture = SDL_CreateTexture(ren, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, 160, 144);
@@ -265,7 +266,8 @@ void GameBoy::dma_byte_copy() {
 }
 
 void GameBoy::ppu_stat_line() {
-    ppu->update_stat_line();
+    if (!ppu->lcd_was_off)
+        ppu->update_stat_line();
 }
 
 void GameBoy::handle_input(SDL_Event e, bool set) {

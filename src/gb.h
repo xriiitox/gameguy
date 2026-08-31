@@ -4,6 +4,7 @@
 #include "cpu.h"
 #include "bus.h"
 #include "ppu.h"
+#include "apu.h"
 #include "mappers/mapper.h"
 
 #pragma once
@@ -23,6 +24,8 @@ class GameBoy {
         CPU* cpu;
 
         PPU* ppu;
+
+        APU* apu;
         void init_mapper(std::string filename);
 
         double cycle_dt = 1.0 / 4194304;

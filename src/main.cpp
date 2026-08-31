@@ -21,7 +21,7 @@ NFD::UniquePath outPath;
 using namespace std::literals::string_literals;
 
 int main (int argc, char* argv[]) {
-    SDL_Init(SDL_INIT_VIDEO);
+    SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO);
 
     NFD::Guard nfdGuard;
 
