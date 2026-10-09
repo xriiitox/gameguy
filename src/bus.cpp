@@ -53,28 +53,11 @@ void Bus::write(uint16_t addr, uint8_t val, bool tk) {
     if (addr == 0xFF06) { write_tma(val); return; }
     if (addr == 0xFF07) { write_tac(val); return; }
     if (addr == 0xFF0F) { IF = val; return; }
-    if (addr == 0xFF10) { nr10 = val; return; }
-    if (addr == 0xFF11) { nr11 = val; return; }
-    if (addr == 0xFF12) { nr12 = val; return; }
-    if (addr == 0xFF13) { nr13 = val; return; }
-    if (addr == 0xFF14) { nr14 = val; return; }
-    if (addr == 0xFF16) { nr21 = val; return; }
-    if (addr == 0xFF17) { nr22 = val; return; }
-    if (addr == 0xFF18) { nr23 = val; return; }
-    if (addr == 0xFF19) { nr24 = val; return; }
-    if (addr == 0xFF1A) { nr30 = val; return; }
-    if (addr == 0xFF1B) { nr31 = val; return; }
-    if (addr == 0xFF1C) { nr32 = val; return; }
-    if (addr == 0xFF1D) { nr33 = val; return; }
-    if (addr == 0xFF1E) { nr34 = val; return; }
-    if (addr == 0xFF20) { nr41 = val; return; }
-    if (addr == 0xFF21) { nr42 = val; return; }
-    if (addr == 0xFF22) { nr43 = val; return; }
-    if (addr == 0xFF23) { nr44 = val; return; }
-    if (addr == 0xFF24) { nr50 = val; return; }
-    if (addr == 0xFF25) { nr51 = val; return; }
-    if (addr == 0xFF26) { nr52 = val & 0xF0; return; }
-    if (addr <= 0xFF3F) { wav_ram[addr - 0xFF30] = val; return; }
+    if (addr >= 0xFF10 && addr <= 0xFF26) {
+        gb->apu->write(addr, val);
+        return;
+    }
+    if (addr >= 0xFF30 && addr <= 0xFF3F) { gb->apu->channel3.wave_ram[addr - 0xFF30] = val; return; }
     if (addr == 0xFF40) { lcdc = val; return; }
     if (addr == 0xFF41) { // leave last few bits read only
         stat = (stat & 0x07) | (val & 0xF8);
@@ -153,27 +136,12 @@ uint8_t Bus::read(uint16_t addr, bool tk, bool bypass) {
     if (addr == 0xFF06) return timers.tma;
     if (addr == 0xFF07) { return timers.tac | 0xF8; }
     if (addr == 0xFF0F) { return IF | 0xE0; }
-    if (addr == 0xFF10) { return nr10 | 0x80; }
-    if (addr == 0xFF11) { return nr11; }
-    if (addr == 0xFF12) { return nr12; }
-    if (addr == 0xFF13) { return nr13; }
-    if (addr == 0xFF14) { return nr14; }
-    if (addr == 0xFF16) { return nr21; }
-    if (addr == 0xFF17) { return nr22; }
-    if (addr == 0xFF18) { return nr23; }
-    if (addr == 0xFF19) { return nr24; }
-    if (addr == 0xFF1A) { return nr30 | 0x7F; }
-    if (addr == 0xFF1B) { return nr31; }
-    if (addr == 0xFF1C) { return nr32 | 0x9F; }
-    if (addr == 0xFF1D) { return nr33; }
-    if (addr == 0xFF1E) { return nr34; }
-    if (addr == 0xFF20) { return nr41 | 0xC0; }
-    if (addr == 0xFF21) { return nr42; }
-    if (addr == 0xFF22) { return nr43; }
-    if (addr == 0xFF23) { return nr44 | 0x3F; }
-    if (addr == 0xFF24) { return nr50; }
-    if (addr == 0xFF25) { return nr51; }
-    if (addr == 0xFF26) { return nr52 | 0x70; }
+    if (addr >= 0xFF10 && addr <= 0xFF26) {
+        return gb->apu->read(addr);
+    }
+    if (addr >= 0xFF30 && addr <= 0xFF3F) {
+        return gb->apu->channel3.wave_ram[addr - 0xFF30];
+    }
     if (addr == 0xFF40) return lcdc;
     if (addr == 0xFF41) { return stat | 0x80; }
     if (addr == 0xFF42) return scy;
@@ -212,7 +180,8 @@ void Bus::write_div() {
         }
     }
 
-    // reset apu frame sequencer
+    gb->apu->frame_sequencer_counter = 0;
+    gb->apu->frame_sequencer_step = 0;
 }
 
 void Bus::write_tima(uint8_t val) {

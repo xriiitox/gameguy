@@ -39,30 +39,6 @@ public:
         bool tima_just_reloaded = false;
     } timers;
 
-    // audio regs
-    uint8_t nr10 = 0x80;
-    uint8_t nr11 = 0xBF;
-    uint8_t nr12 = 0xF3;
-    uint8_t nr13 = 0xFF;
-    uint8_t nr14 = 0xBF;
-    uint8_t nr21 = 0x3F;
-    uint8_t nr22 = 0;
-    uint8_t nr23 = 0xFF;
-    uint8_t nr24 = 0xBF;
-    uint8_t nr30 = 0x7F;
-    uint8_t nr31 = 0xFF;
-    uint8_t nr32 = 0x9F;
-    uint8_t nr33 = 0xFF;
-    uint8_t nr34 = 0xBF;
-    uint8_t nr41 = 0xFF;
-    uint8_t nr42 = 0;
-    uint8_t nr43 = 0;
-    uint8_t nr44 = 0xBF;
-    uint8_t nr50 = 0x77;
-    uint8_t nr51 = 0xF3;
-    uint8_t nr52 = 0xF1;
-    uint8_t wav_ram[16];
-
     // better serial implementation
     struct SerialPort {
         uint8_t sb = 0x00;

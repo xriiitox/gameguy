@@ -25,7 +25,6 @@ class GameBoy {
 
         PPU* ppu;
 
-        APU* apu;
         void init_mapper(std::string filename);
 
         double cycle_dt = 1.0 / 4194304;
@@ -71,4 +70,6 @@ class GameBoy {
             int start_delay = 0;
             bool pending_restart = false;
         } dma;
+
+        APU* apu;
 };

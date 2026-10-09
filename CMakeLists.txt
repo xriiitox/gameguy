@@ -31,6 +31,7 @@ target_sources(${PROJECT_NAME} PRIVATE
   src/config.cpp
   src/bus.cpp
   src/ppu.cpp
+  src/apu.cpp
   src/mappers/nomap.cpp
   src/mappers/mbc1.cpp
   src/mappers/mbc2.cpp

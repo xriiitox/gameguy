@@ -1,4 +1,5 @@
 #include "gb.h"
+#include "apu.h"
 #include "mappers/mbcs.h"
 #include <SDL3/SDL.h>
 #include <filesystem>
@@ -79,10 +80,11 @@ void GameBoy::init_mapper(std::string filename) {
 }
 
 GameBoy::~GameBoy() {
-    if (mapper) delete mapper;
-    if (cpu) delete cpu;
-    if (ppu) delete ppu;
+    if (apu) delete apu;
     if (bus) delete bus;
+    if (ppu) delete ppu;
+    if (cpu) delete cpu;
+    if (mapper) delete mapper;
 }
 
 using Clock = std::chrono::steady_clock;
@@ -130,18 +132,29 @@ void GameBoy::tick() { // m-cycles
     // oam dma
     tick_dma();
 
-    // apu tick TODO
+    apu->tick();
 }
 
 // runs instructions
 void GameBoy::cycle() {
     t = now_seconds();
+    const double cycle_start = now_seconds();
     static const uint32_t MCYCLES_PER_FRAME = 17556;
+    static constexpr uint64_t MAX_CATCHUP_TCYCLES =
+        static_cast<uint64_t>(MCYCLES_PER_FRAME) * 4 * 2;
+    int instructions = 0;
+    uint64_t catchup_tcycles = 0;
 
     // inst cycle
     while (t >= next_inst) {
+        if (catchup_tcycles >= MAX_CATCHUP_TCYCLES) {
+            next_inst = t;
+            break;
+        }
+
         if (cpu->halted) {
             tick();
+            catchup_tcycles += 4;
 
             if (bus->read(0xFFFF, false) & bus->read(0xFF0F, false) & 0x1F) {
                 cpu->halted = false;
@@ -162,9 +175,13 @@ void GameBoy::cycle() {
             if (!cpu->halt_bug) cpu->pc++;
             else cpu->halt_bug = false;
             cpu->opcode(opcode);
-            next_inst += (cpu->t_cycle) * cycle_dt;
+            const uint32_t instruction_tcycles = cpu->t_cycle;
+            catchup_tcycles += instruction_tcycles;
+            next_inst += instruction_tcycles * cycle_dt;
         }
+        ++instructions;
     }
+
     if (cycles_frame >= MCYCLES_PER_FRAME) {
         SDL_UpdateTexture(texture, nullptr, ppu->framebuffer, 160*sizeof(uint32_t));
         cycles_frame = 0;

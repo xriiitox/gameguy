@@ -1,5 +1,5 @@
 #pragma once
-#include <nfd.hpp>
+#include "../nfd/nfd.hpp"
 #include <SDL3/SDL.h>
 #include <string>
 
