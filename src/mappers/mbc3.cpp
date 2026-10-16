@@ -51,9 +51,9 @@ MBC3::MBC3(std::string filename, bool timer, bool ram, bool battery) {
     std::string ext = p.extension().string();
     int extnum;
     if (ext == "gb") {
-        extnum = 3;
+        extnum = 2;
     } else {
-        extnum = 4; // gbc filename
+        extnum = 3; // gbc filename
     }
     std::string savename = filename.substr(0, filename.size()-extnum)+".sav";
     if (std::filesystem::exists(savename) && Mapper::battery && Mapper::ram) {

@@ -62,6 +62,7 @@ public:
     void tick_serial();
     bool get_timer_bit();
     bool get_timer_bit_at(uint16_t clk, uint8_t tac);
+    void initialize_dmg_vram();
 
     GameBoy* gb;
 

@@ -18,6 +18,7 @@ GameBoy::GameBoy(GBConfig& gbconf, SDL_Renderer* ren) {
     this->texture = SDL_CreateTexture(ren, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, 160, 144);
     SDL_SetTextureScaleMode(this->texture, SDL_SCALEMODE_PIXELART);
     SDL_SetWindowTitle(SDL_GetRenderWindow(ren), gbconf.filename.c_str());
+    this->bus->initialize_dmg_vram();
 }
 
 void GameBoy::init_mapper(std::string filename) {

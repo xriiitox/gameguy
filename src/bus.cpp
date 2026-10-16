@@ -1,10 +1,55 @@
 #include "bus.h"
 #include "gb.h"
+#include <algorithm>
 
 Bus::Bus(GameBoy* gb) {
     this->gb = gb;
 
     div = (uint8_t*)&gb->sysclk + 1;
+
+    std::fill(vram, vram+sizeof(vram), 0);
+
+    wram1[0] = 0x48;
+}
+
+void Bus::initialize_dmg_vram() {
+    std::fill(std::begin(vram), std::end(vram), 0);
+
+    uint16_t destination = 0x10;
+    for (uint16_t source = 0x0104; source < 0x0134; ++source) {
+        const uint8_t logo_byte = gb->mapper->read(source);
+        for (int shift : {4, 0}) {
+            const uint8_t nibble = (logo_byte >> shift) & 0x0F;
+            uint8_t expanded = 0;
+            for (int bit = 3; bit >= 0; --bit) {
+                expanded |= static_cast<uint8_t>(((nibble >> bit) & 1) << (bit * 2 + 1));
+                expanded |= static_cast<uint8_t>(((nibble >> bit) & 1) << (bit * 2));
+            }
+            vram[destination++] = expanded;
+            ++destination;
+            vram[destination++] = expanded;
+            ++destination;
+        }
+    }
+
+    constexpr uint8_t trademark[] = {
+        0x3C, 0x42, 0xB9, 0xA5, 0xB9, 0xA5, 0x42, 0x3C
+    };
+    for (uint8_t value : trademark) {
+        vram[destination] = value;
+        destination += 2;
+    }
+
+    constexpr uint8_t background_map[] = {
+        0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+        0x09, 0x0A, 0x0B, 0x0C, 0x19, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x0D, 0x0E, 0x0F, 0x10, 0x11, 0x12, 0x13, 0x14,
+        0x15, 0x16, 0x17, 0x18
+    };
+    std::copy(std::begin(background_map), std::end(background_map),
+              vram + (0x9904 - 0x8000));
 }
 
 bool is_external_bus(uint16_t addr) {
@@ -19,12 +64,12 @@ bool is_vram_bus(uint16_t addr) {
 void Bus::write(uint16_t addr, uint8_t val, bool tk) {
     if (tk) gb->tick();
     if (gb->dma.bus_locked) {
-            uint16_t dma_src = gb->dma.source;
-
             if (addr == 0xFF46) { write_dma(val); return; }
-            if (addr >= 0xFE00 && addr <= 0xFE9F) return; // OAM locked
-            if (is_external_bus(dma_src) && is_external_bus(addr)) return;
-            if (is_vram_bus(dma_src) && is_vram_bus(addr)) return;
+            if (addr >= 0xFF30 && addr <= 0xFF3F) {
+                gb->apu->channel3.wave_ram[addr - 0xFF30] = val;
+                return;
+            }
+            if (addr < 0xFF80 || addr > 0xFFFE) return;
         }
     if (addr <= 0x7FFF) { gb->mapper->write(addr, val); return; }
     if (addr <= 0x9FFF) { write_vram(addr, val); return; } // vram
@@ -78,7 +123,10 @@ void Bus::write(uint16_t addr, uint8_t val, bool tk) {
     if (addr == 0xFF49) { obp1 = val; return; }
     if (addr == 0xFF4A) { wy = val; return; }
     if (addr == 0xFF4B) { wx = val; return;}
-    if (addr <= 0xFFFE) { hram[addr - 0xFF80] = val; return; } // high ram
+    if (addr >= 0xFF80 && addr <= 0xFFFE) {
+        hram[addr - 0xFF80] = val;
+        return;
+    } // high ram
     if (addr == 0xFFFF) { ie = val; return; }
 }
 
@@ -88,21 +136,11 @@ uint8_t Bus::read(uint16_t addr, bool tk, bool bypass) {
     // if (tk && (!isdma || (addr >= 0xFF80 && addr <= 0xFFFE))) gb->tick(); // tick if read from hram during dma
     // only allow reads from hram or source addr during dma
     if (!bypass && isdma) {
-        uint16_t dma_src = gb->dma.source;
-
-        // OAM is always locked for CPU reads during DMA
-        if (addr >= 0xFE00 && addr <= 0xFE9F) {
-            return 0xFF;
+        if (addr >= 0xFF30 && addr <= 0xFF3F) {
+            return gb->apu->channel3.wave_ram[addr - 0xFF30];
         }
-
-        // Check for conflict on External Bus
-        if (is_external_bus(dma_src) && is_external_bus(addr)) {
-            return 0xFF;
-        }
-
-        // Check for conflict on VRAM Bus
-        if (is_vram_bus(dma_src) && is_vram_bus(addr)) {
-            return 0xFF;
+        if (addr < 0xFF80 || addr > 0xFFFE) {
+            return gb->dma.index == 0 ? 0xFF : oam[gb->dma.index - 1];
         }
     }
     if (addr <= 0x7FFF) return gb->mapper->read(addr);
@@ -181,7 +219,7 @@ void Bus::write_div() {
     }
 
     gb->apu->frame_sequencer_counter = 0;
-    gb->apu->frame_sequencer_step = 0;
+    gb->apu->frame_sequencer_step = 7;
 }
 
 void Bus::write_tima(uint8_t val) {

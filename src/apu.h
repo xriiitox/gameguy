@@ -5,6 +5,7 @@
 
 struct SquareChannel {
     bool enabled = false;
+    bool dac_enabled = false;
     uint8_t duty = 0;
     uint8_t duty_position = 0;
     uint8_t volume = 0;
@@ -46,6 +47,7 @@ struct WaveChannel {
 
 struct NoiseChannel {
     bool enabled = false;
+    bool dac_enabled = false;
     uint8_t volume = 0;
 
     uint8_t envelope_period = 0;
@@ -73,24 +75,20 @@ struct NoiseChannel {
 };
 
 struct HighPass {
-    double previous_input = 0.0;
-    double previous_output = 0.0;
+    double input = 0.0;
+    double output = 0.0;
 
-    int16_t process(int input) {
-        constexpr double alpha = 0.995;
-        const double output =
-            alpha * (previous_output + input - previous_input);
-        previous_input = input;
-        previous_output = output;
-
-        if (output > 32767.0) return 32767;
-        if (output < -32768.0) return -32768;
-        return static_cast<int16_t>(output);
+    int process(int sample) {
+        // One-pole DC blocker, approximately a 20 Hz high-pass at 48 kHz.
+        constexpr double alpha = 0.9974;
+        output = alpha * (output + static_cast<double>(sample) - input);
+        input = static_cast<double>(sample);
+        return static_cast<int>(output);
     }
 
     void reset() {
-        previous_input = 0.0;
-        previous_output = 0.0;
+        input = 0.0;
+        output = 0.0;
     }
 };
 
@@ -159,5 +157,5 @@ public:
     bool next_step_clocks_length() const;
 
     uint32_t frame_sequencer_counter = 0;
-    uint8_t frame_sequencer_step = 0;
+    uint8_t frame_sequencer_step = 7;
 };

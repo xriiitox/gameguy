@@ -27,7 +27,7 @@ int main (int argc, char* argv[]) {
 
     nfdfilteritem_t filterItem[] = {{"Game Boy ROM", "gb"}, {"Game Boy Color ROM", "gbc"}};
 
-    SDL_Window* win = SDL_CreateWindow("game guy", 480, 432, 0);
+    SDL_Window* win = SDL_CreateWindow("game guy", 640, 576, SDL_WINDOW_RESIZABLE);
     if (win == nullptr) {
         std::cerr << "SDL_CreateWindow Error: " << SDL_GetError() << std::endl;
         SDL_Quit();
@@ -35,7 +35,7 @@ int main (int argc, char* argv[]) {
     }
 
     SDL_SetWindowAspectRatio(win, 160.0f/144.0f, 160.0f/144.0f);
-    SDL_SetWindowMinimumSize(win, 160, 144);
+    // SDL_SetWindowMinimumSize(win, 160, 144);
     NFD_SetDisplayPropertiesFromSDLWindow(win);
 
     SDL_Renderer* ren = SDL_CreateRenderer(win, nullptr);

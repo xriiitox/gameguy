@@ -56,9 +56,9 @@ void SquareChannel::clock_envelope() {
             --volume;
         }
 
-        std::cerr << "envelope volume=" << static_cast<int>(volume)
+        /* std::cerr << "envelope volume=" << static_cast<int>(volume)
                   << " length=" << static_cast<int>(length_counter)
-                  << " enabled=" << enabled << '\n';
+                  << " enabled=" << enabled << '\n'; */
     }
 }
 
@@ -68,7 +68,7 @@ void SquareChannel::trigger(bool master_enabled, int value) {
     }
 
     volume = (value >> 4) & 0x0F;
-    enabled = master_enabled && volume != 0;
+    enabled = master_enabled && dac_enabled;
     duty_position = 0;
     frequency_timer = (2048 - frequency) * 4;
     envelope_timer = envelope_period == 0 ? 8 : envelope_period;
@@ -177,10 +177,12 @@ void APU::generate_sample() {
     constexpr int output_gain = 512;
     const int left_sample = left * output_gain;
     const int right_sample = right * output_gain;
+    const int filtered_left = left_filter.process(left_sample);
+    const int filtered_right = right_filter.process(right_sample);
     audio_buffer[audio_buffer_frames * channels] =
-        clamp_sample(left_sample);
+        clamp_sample(filtered_left);
     audio_buffer[audio_buffer_frames * channels + 1] =
-        clamp_sample(right_sample);
+        clamp_sample(filtered_right);
     ++audio_buffer_frames;
 
     if (audio_buffer_frames == audio_chunk_frames) {
@@ -210,6 +212,53 @@ void APU::generate_sample() {
 }
 
 void APU::write(uint16_t address, uint8_t value) {
+    if (address == 0xFF26) {
+        const bool enabling = (value & 0x80) != 0;
+        if (!enabling) {
+            master_enabled = false;
+            nr10 = 0;
+            nr11 = 0;
+            nr12 = 0;
+            nr13 = 0;
+            nr14 = 0;
+            nr21 = 0;
+            nr22 = 0;
+            nr23 = 0;
+            nr24 = 0;
+            nr30 = 0;
+            nr31 = 0;
+            nr32 = 0;
+            nr33 = 0;
+            nr34 = 0;
+            nr41 = 0;
+            nr42 = 0;
+            nr43 = 0;
+            nr44 = 0;
+            nr50 = 0;
+            nr51 = 0;
+            channel1 = {};
+            channel2 = {};
+            channel3.enabled = false;
+            channel3.dac_enabled = false;
+            channel3.frequency = 0;
+            channel3.frequency_timer = 0;
+            channel3.length_counter = 0;
+            channel3.length_enabled = false;
+            channel3.position = 0;
+            channel3.volume_code = 0;
+            channel4 = {};
+            left_filter.reset();
+            right_filter.reset();
+        } else {
+            master_enabled = true;
+        }
+        return;
+    }
+
+    if (!master_enabled && address >= 0xFF10 && address <= 0xFF25) {
+        return;
+    }
+
     switch (address) {
         case 0xFF10:
             nr10 = value;
@@ -222,8 +271,10 @@ void APU::write(uint16_t address, uint8_t value) {
             break;
         case 0xFF12:
             nr12 = value;
+            channel1.dac_enabled = (value & 0xF8) != 0;
             channel1.envelope_increase = (value & 0x08) != 0;
             channel1.envelope_period = value & 0x07;
+            if (!channel1.dac_enabled) channel1.enabled = false;
             break;
         case 0xFF13:
             nr13 = value;
@@ -246,7 +297,7 @@ void APU::write(uint16_t address, uint8_t value) {
                 const bool length_was_zero = channel1.length_counter == 0;
                 channel1.trigger(master_enabled, nr12);
                 if (length_was_zero && channel1.length_enabled &&
-                    next_step_clocks_length()) {
+                    !next_step_clocks_length()) {
                     channel1.clock_length();
                 }
 
@@ -256,6 +307,15 @@ void APU::write(uint16_t address, uint8_t value) {
                 sweep_shift = nr10 & 0x07;
                 sweep_timer = sweep_period == 0 ? 8 : sweep_period;
                 sweep_enabled = sweep_period != 0 || sweep_shift != 0;
+                if (sweep_shift != 0) {
+                    const uint16_t delta = shadow_frequency >> sweep_shift;
+                    const int next_frequency = sweep_decrease
+                        ? static_cast<int>(shadow_frequency) - delta
+                        : static_cast<int>(shadow_frequency) + delta;
+                    if (next_frequency < 0 || next_frequency > 2047) {
+                        channel1.enabled = false;
+                    }
+                }
             }
             break;
         case 0xFF24:
@@ -264,18 +324,6 @@ void APU::write(uint16_t address, uint8_t value) {
         case 0xFF25:
             nr51 = value;
             break;
-        case 0xFF26:
-            master_enabled = (value & 0x80) != 0;
-            nr52 = master_enabled ? 0x80 : 0x00;
-            if (!master_enabled) {
-                channel1.enabled = false;
-                channel2.enabled = false;
-                channel3.enabled = false;
-                channel4.enabled = false;
-                left_filter.reset();
-                right_filter.reset();
-            }
-            break;
         case 0xFF16:
             nr21 = value;
             channel2.duty = (value >> 6) & 0x03;
@@ -283,8 +331,10 @@ void APU::write(uint16_t address, uint8_t value) {
             break;
         case 0xFF17:
             nr22 = value;
+            channel2.dac_enabled = (value & 0xF8) != 0;
             channel2.envelope_increase = (value & 0x08) != 0;
             channel2.envelope_period = value & 0x07;
+            if (!channel2.dac_enabled) channel2.enabled = false;
             break;
         case 0xFF18:
             nr23 = value;
@@ -307,7 +357,7 @@ void APU::write(uint16_t address, uint8_t value) {
                 const bool length_was_zero = channel2.length_counter == 0;
                 channel2.trigger(master_enabled, nr22);
                 if (length_was_zero && channel2.length_enabled &&
-                    next_step_clocks_length()) {
+                    !next_step_clocks_length()) {
                     channel2.clock_length();
                 }
             }
@@ -349,7 +399,7 @@ void APU::write(uint16_t address, uint8_t value) {
                 const bool length_was_zero = channel3.length_counter == 0;
                 channel3.trigger(master_enabled);
                 if (length_was_zero && channel3.length_enabled &&
-                    next_step_clocks_length()) {
+                    !next_step_clocks_length()) {
                     channel3.clock_length();
                 }
             }
@@ -360,9 +410,11 @@ void APU::write(uint16_t address, uint8_t value) {
             break;
         case 0xFF21:
             nr42 = value;
+            channel4.dac_enabled = (value & 0xF8) != 0;
             channel4.volume = (value >> 4) & 0x0F;
             channel4.envelope_increase = (value & 0x08) != 0;
             channel4.envelope_period = value & 0x07;
+            if (!channel4.dac_enabled) channel4.enabled = false;
             break;
         case 0xFF22:
             nr43 = value;
@@ -385,7 +437,7 @@ void APU::write(uint16_t address, uint8_t value) {
                 const bool length_was_zero = channel4.length_counter == 0;
                 channel4.trigger(master_enabled);
                 if (length_was_zero && channel4.length_enabled &&
-                    next_step_clocks_length()) {
+                    !next_step_clocks_length()) {
                     channel4.clock_length();
                 }
             }
@@ -398,26 +450,26 @@ void APU::write(uint16_t address, uint8_t value) {
 uint8_t APU::read(uint16_t addr) const {
     switch (addr) {
         case 0xFF10: return nr10 | 0x80;
-        case 0xFF11: return nr11;
+        case 0xFF11: return nr11 | 0x3F;
         case 0xFF12: return nr12;
-        case 0xFF13: return nr13;
-        case 0xFF14: return nr14 | 0x40;
+        case 0xFF13: return nr13 | 0xFF;
+        case 0xFF14: return nr14 | 0xBF;
 
-        case 0xFF16: return nr21;
+        case 0xFF16: return nr21 | 0x3F;
         case 0xFF17: return nr22;
-        case 0xFF18: return nr23;
-        case 0xFF19: return nr24;
+        case 0xFF18: return nr23 | 0xFF;
+        case 0xFF19: return nr24 | 0xBF;
 
-        case 0xFF1A: return nr30;
-        case 0xFF1B: return nr31;
+        case 0xFF1A: return nr30 | 0x7F;
+        case 0xFF1B: return nr31 | 0xFF;
         case 0xFF1C: return nr32 | 0x9F;
-        case 0xFF1D: return nr33;
-        case 0xFF1E: return nr34;
+        case 0xFF1D: return nr33 | 0xFF;
+        case 0xFF1E: return nr34 | 0xBF;
 
-        case 0xFF20: return nr41 | 0xC0;
+        case 0xFF20: return nr41 | 0xFF;
         case 0xFF21: return nr42;
         case 0xFF22: return nr43;
-        case 0xFF23: return nr44 | 0x3F;
+        case 0xFF23: return nr44 | 0xBF;
 
         case 0xFF24: return nr50;
         case 0xFF25: return nr51;
@@ -434,7 +486,7 @@ uint8_t APU::read(uint16_t addr) const {
 }
 
 void APU::clock_sweep() {
-    if (!sweep_enabled || sweep_period == 0 || !channel1.enabled) {
+    if (!sweep_enabled || !channel1.enabled) {
         return;
     }
 
@@ -442,10 +494,17 @@ void APU::clock_sweep() {
         return;
     }
 
-    sweep_timer = sweep_period == 0 ? 8 : sweep_period;
+    const uint8_t period = (nr10 >> 4) & 0x07;
+    const uint8_t shift = nr10 & 0x07;
+    const bool decrease = (nr10 & 0x08) != 0;
 
-    const uint16_t delta = shadow_frequency >> sweep_shift;
-    const int next_frequency = sweep_decrease
+    sweep_timer = period == 0 ? 8 : period;
+    if (period == 0) {
+        return;
+    }
+
+    const uint16_t delta = shadow_frequency >> shift;
+    const int next_frequency = decrease
         ? static_cast<int>(shadow_frequency) - delta
         : static_cast<int>(shadow_frequency) + delta;
 
@@ -454,12 +513,12 @@ void APU::clock_sweep() {
         return;
     }
 
-    if (sweep_shift != 0) {
+    if (shift != 0) {
         shadow_frequency = static_cast<uint16_t>(next_frequency);
         channel1.frequency = shadow_frequency;
 
-        uint16_t second_delta = shadow_frequency >> sweep_shift;
-        int overflow_check = sweep_decrease
+        uint16_t second_delta = shadow_frequency >> shift;
+        int overflow_check = decrease
             ? shadow_frequency - second_delta
             : shadow_frequency + second_delta;
 
@@ -535,7 +594,7 @@ void NoiseChannel::trigger(bool master_enabled) {
         length_counter = 64;
     }
 
-    enabled = master_enabled && volume != 0;
+    enabled = master_enabled && dac_enabled;
     lfsr = 0x7FFF;
     frequency_timer = divisors[divisor_code] << clock_shift;
     envelope_timer = envelope_period == 0 ? 8 : envelope_period;
